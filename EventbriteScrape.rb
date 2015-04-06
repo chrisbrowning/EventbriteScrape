@@ -70,6 +70,7 @@ class EventbriteScrape
 		@final_arr = [@titles],[@json_arr]
 	end
 
+	# reads pagination on Eventbrite API response
 	def get_page_data(json_file)
 		@pages = {}
 		@pages["page_count"] = json_file["pagination"]["page_count"]
@@ -120,6 +121,7 @@ class EventbriteScrape
 		return @new_titles
 	end
 
+	# writes CSV from json document using titles
 	def write_csv(type, final_arr)
 	  @csv_data = CSV.generate do |csv|
 			@val = []
