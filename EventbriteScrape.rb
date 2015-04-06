@@ -384,6 +384,7 @@ class EventbriteScrape
 
 end
 
+# Command-line switching options via optparse
 ARGV << '-h' if ARGV.empty?
 options = {}
 optparser = OptionParser.new do |opts|
