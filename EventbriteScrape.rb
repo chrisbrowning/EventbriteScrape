@@ -2,21 +2,21 @@ require 'json' # for parsing and building api response data
 require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
 require 'rest-client'  # framework for calling APIs
 require 'optparse'  # framework for applciation CLI
-require 'cgi'  # handles URL encoding for SF rest API calls
+require 'erb'  # handles URL encoding for SF rest API calls
 
 class EventbriteScrape
 
-	# not-sensitive auth values
-	$oauth_prefix = 'https://test.salesforce.com'
-	$oauth_auth_endpoint =  "#{$oauth_prefix}/services/oauth2/authorize"
-	$oauth_token_endpoint = "#{$oauth_prefix}/services/oauth2/token"
+  # not-sensitive auth values
+  $oauth_prefix = 'https://test.salesforce.com'
+  $oauth_auth_endpoint =  "#{$oauth_prefix}/services/oauth2/authorize"
+  $oauth_token_endpoint = "#{$oauth_prefix}/services/oauth2/token"
 
-	def scrape(type_to_scrape, arr_to_scrape)
-		#json_arr   -> used to store all json objects from api responses
-		#titles     -> aggregate array of all unique properties of the json responses
-		#new_titles -> titles for the current json object under inspection
-		#final_arr  -> a multi-dim array: final_arr =[titles],[json_arr]
-		json_arr, titles, new_titles, final_arr = [],[],[],[]
+  def scrape(type_to_scrape, arr_to_scrape)
+    #json_arr   -> used to store all json objects from api responses
+    #titles     -> aggregate array of all unique properties of the json responses
+    #new_titles -> titles for the current json object under inspection
+    #final_arr  -> a multi-dim array: final_arr =[titles],[json_arr]
+    json_arr, titles, new_titles, final_arr = [],[],[],[]
 
 		pagination = TRUE if ["attendee","venue"].include?(type_to_scrape)
 
@@ -134,12 +134,12 @@ class EventbriteScrape
 		key_array.each do |key|
 		  unless current_doc[key].nil?
 		    current_doc = current_doc[key]
-		 	 	get_val = current_doc
+		 	 	@get_val = current_doc
 		  else
 		    return nil
 		  end
 		end
-		return get_val
+		return @get_val
 	end
 
 	#given a particular type, returns the correct endpoint for api calls
@@ -278,6 +278,7 @@ class EventbriteScrape
 		data[0].each do |obj|
       puts obj["profile"]
 			obj = add_ids_to_campaignmember(obj,instance_url,access_token) if object_type == "CampaignMember"
+      next if obj.nil?
 			json_payload = get_json_payload(object_type,obj)
 			query_response = search_salesforce(object_type,obj,instance_url,access_token)
       puts query_response == "[]"
@@ -310,11 +311,11 @@ class EventbriteScrape
 	# prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
 	# when refactoring -- make sure not to use gsub! as it may alter the original API data
 	def add_escape_characters(string)
-		@escaped_string = string
-		['-','&',','].each do |syn_char|
-			@escaped_string = @escaped_string.gsub(syn_char,'\\\\' + "#{syn_char}")
+		escaped_string = string
+		['&',',','-'].each do |syn_char|
+			escaped_string = escaped_string.gsub(syn_char,'\\\\' + "#{syn_char}")
 		end
-		return @escaped_string
+		return escaped_string
 	end
 
 	# adds Campaign and Contact Id info to CampaignMember payload before processing
@@ -324,8 +325,10 @@ class EventbriteScrape
 		contact_fn = add_escape_characters(obj["profile"]["first_name"])
 		contact_ln = add_escape_characters(obj["profile"]["last_name"])
 		contact_email = add_escape_characters(obj["order"]["email"]) if contact_email.nil?
-		campaign_search_string = CGI.escape "FIND {#{campaign_id}} IN ALL FIELDS RETURNING Campaign(Id)"
-		contact_search_string = CGI.escape "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING Contact(Id)"
+		campaign_search_string = ERB::Util.url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING Campaign(Id)"
+		contact_search_string = ERB::Util.url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING Contact(Id)"
+		campaign seach_string = escape_extra(campaign_seach_string)
+		contact_search_string = escape_extra(contact_search_string)
 		@campaign_query_response = RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}",
 			{"Authorization" => "Bearer #{access_token}",
 			:accept => 'application/json',
@@ -337,8 +340,12 @@ class EventbriteScrape
     puts @contact_query_response
 		json_campaign = JSON.parse(@campaign_query_response)[0]
 		json_contact = JSON.parse(@contact_query_response)[0]
-		obj.store("ContactId",json_contact["Id"])
-		obj.store("CampaignId",json_campaign["Id"])
+    unless json_contact.nil?
+		  obj.store("ContactId",json_contact["Id"])
+		  obj.store("CampaignId",json_campaign["Id"])
+    else
+		  obj = nil
+    end
 		return obj
 	end
 
@@ -348,24 +355,26 @@ class EventbriteScrape
 		case
 		when object_type == "Campaign"
 			campaign_id = obj["id"]
-			search_string = CGI.escape "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
+			search_string = ERB::Util.url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
 		when object_type == "Contact"
 			contact_fn = add_escape_characters(obj["profile"]["first_name"])
 			contact_ln = add_escape_characters(obj["profile"]["last_name"])
 			contact_email =  add_escape_characters(obj["profile"]["email"])
 			contact_email = add_escape_characters(obj["order"]["email"]) if contact_email.nil?
-			search_string = CGI.escape "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING #{object_type}(Id)"
+			search_string = ERB::Util.url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING #{object_type}(Id)"
+      search_string = escape_extra(search_string)
 		when object_type == "CampaignMember"
 			contact_id = obj["ContactId"]
 			campaign_id = obj["CampaignId"]
 			type = "query"
-			search_string = CGI.escape "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
+			search_string = ERB::Util.url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
+      search_string = escape_extra(search_string)
 		end
+    puts search_string
 		@query_response = RestClient.get("#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}",
 			{"Authorization" => "Bearer #{access_token}",
 			:accept => 'application/json',
 			:verify => false})
-    puts @query_response
 		return @query_response
 	end
 
