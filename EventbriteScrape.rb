@@ -1,8 +1,8 @@
-require 'json' 				# for parsing and building api response data
-require 'csv'  				# for parsing locally-stored authentication data and exporting Eventbrite data
-require 'rest-client' # framework for calling APIs
-require 'optparse' 		# framework for applciation CLI
-require 'cgi'					# handles URL encoding for SF rest API calls
+require 'json' # for parsing and building api response data
+require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
+require 'rest-client'  # framework for calling APIs
+require 'optparse'  # framework for applciation CLI
+require 'cgi'  # handles URL encoding for SF rest API calls
 
 class EventbriteScrape
 
@@ -21,7 +21,6 @@ class EventbriteScrape
 	$oauth_token_endpoint = "#{$oauth_prefix}/services/oauth2/token"
 
 	def scrape(type_to_scrape, arr_to_scrape)
-
 		#json_arr   -> used to store all json objects from api responses
 		#titles     -> aggregate array of all unique properties of the json responses
 		#new_titles -> titles for the current json object under inspection
@@ -78,48 +77,41 @@ class EventbriteScrape
 		return @pages
 	end
 
-	# recursive method for extracting json properties from json file
-	# flagged for refactoring -- this is filthy, yuck!
-	def scrape_titles(json_file)
-	  @new_titles = []
-		json_file.each do |property|
-			@title = property[0]
-		  @snippet = property[1]
-			if @snippet.is_a? (Hash)
-				@snippet.each do |sub|
-					unless sub[1].nil?
-						if sub[1].is_a? (Hash)
-						  @sub_title = sub[0]
-						  sub[1].each do |sub2|
-								unless sub2[1].nil?
-									if sub2[1].is_a? (Hash)
-										@sub_sub_title = sub2[0]
-										sub2[1].each do |sub3|
-											unless sub3[1].nil?
-												@new_titles << [@title,@sub_title,@sub_sub_title,sub3[0]].join('.')
-											end
-										end
-									else
-										@new_titles << [@title,@sub_title,sub2[0]].join('.')
-									end
-								end
-						  end
-					  else
-							# puts "@title + @snippet[0] = " + @title + '.' + sub[0]
-						  @new_titles << [@title,sub[0]].join('.')
-					  end
-					end
-				end
-			else
-				unless @snippet.nil?
-				# puts @title
-			  	@new_titles << @title
-				end
-			end
-		end
-		# puts @new_titles
-		return @new_titles
-	end
+	# pulls title information from a hash-formatted JSON document
+  def scrape_titles(json_file)
+    new_titles = []
+    json_file.each do |prop|
+      current_buffer = []
+      if prop[1].is_a? (Hash)
+				current_buffer << prop[0]
+        puts "entering new hash method with current buffer =  #{current_buffer}"
+        new_titles = parse_hash_titles(new_titles,current_buffer,prop[1])
+      else
+        unless prop[1].nil?
+          new_titles << prop[0]
+          puts 'Appending new titles with ' + prop[0] + ' at the first step'
+        end
+      end
+    end
+    return new_titles
+  end
+
+  #recursive method for parsing multiple levels of JSON document
+  def parse_hash_titles(new_titles,current_buffer,new_hash)
+    new_hash.each do |prop|
+      if prop[1].is_a? (Hash)
+        current_buffer << prop[0]
+				puts "entering new hash method with current buffer = #{current_buffer}"
+        new_titles = parse_hash(new_titles,current_buffer,prop[1])
+      else
+        unless prop[1].nil?
+          new_titles << [current_buffer,prop[0]].join('.')
+					puts 'Appending new titles with ' + prop[0] + " -- current buffer = #{current_buffer}"
+        end
+      end
+    end
+    return new_titles
+  end
 
 	# writes CSV from json document using titles
 	def write_csv(type, final_arr)
