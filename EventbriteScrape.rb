@@ -2,7 +2,7 @@ require 'json' # for parsing and building api response data
 require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
 require 'rest-client'  # framework for calling APIs
 require 'optparse'  # framework for applciation CLI
-require 'erb'  # handles URL encoding for SF rest API calls
+require 'cgi'  # handles URL encoding for SF rest API calls
 
 class EventbriteScrape
 
@@ -150,11 +150,14 @@ class EventbriteScrape
 		prefix = "https://www.eventbriteapi.com/v3"
 		case
 		when type_to_scrape == "eid"
-		  endpoint = "#{prefix}/users/#{organizer_id}/owned_events/?status=ended&order_by=start_desc&token=#{token}"
+		  endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
+                "?status=ended&order_by=start_desc&token=#{token}"
 		when type_to_scrape == "event"
 			endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
 		when type_to_scrape == "attendee"
-			endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=category,attendees,subcategory,format,venue,event,ticket_classes,organizer,order,promotional_code"
+			endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=" \
+                 "category,attendees,subcategory,format,venue,event" \
+                 ",ticket_classes,organizer,order,promotional_code"
 		when type_to_scrape == "venue"
 			endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
 		end
@@ -262,13 +265,16 @@ class EventbriteScrape
     client_secret = reader.shift[0]
     username = reader.shift[0]
     password = reader.shift[0]
-    auth_payload = "grant_type=password&client_id=#{client_id}&client_secret=#{client_secret}&username=#{username}&password=#{password}"
+    auth_payload = "grant_type=password&client_id=#{client_id}" \
+                   "&client_secret=#{client_secret}" \
+                   "&username=#{username}&password=#{password}"
     params = {:accept => 'application/json'}
     # puts $oauth_token_endpoint
     # puts auth_payload
     @auth_response = RestClient.post $oauth_token_endpoint, auth_payload, params
     auth_json = JSON.parse(@auth_response)
-    auth_vals = {"access_token" => auth_json["access_token"], "instance_url" => auth_json["instance_url"]}
+    auth_vals = {"access_token" => auth_json["access_token"],
+                "instance_url" => auth_json["instance_url"]}
   end
 
 	# test method for experimenting with Salesforce & Eventbrite REST API Calls
@@ -288,16 +294,20 @@ class EventbriteScrape
 				else
 					json_response = JSON.parse(query_response)[0]
 				end
+
 				# tentatively patch only-if object is not campaignmember
 				# limited in what can be updated on CampaignMember
 				response_id = json_response["Id"]
-				@response = RestClient.patch("#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}", json_payload,
+				@response = RestClient.patch("#{instance_url}/services/data/" \
+          "v29.0/sobjects/#{object_type}/#{response_id}",
+          json_payload,
 				  {"Authorization" => "Bearer #{access_token}",
 					:content_type => 'application/json',
 					:accept => 'application/json',
 					:verify => false}) if object_type != "CampaignMember"
 			else
-				@response = RestClient.post("#{instance_url}/services/data/v29.0/sobjects/#{object_type}/", json_payload,
+				@response = RestClient.post("#{instance_url}/services/data/v29.0/sobjects/#{object_type}/",
+          json_payload,
 				  {"Authorization" => "Bearer #{access_token}",
 					:content_type => 'application/json',
 					:accept => 'application/json',
@@ -310,31 +320,35 @@ class EventbriteScrape
 
 	# prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
 	# when refactoring -- make sure not to use gsub! as it may alter the original API data
-	def add_escape_characters(string)
-		escaped_string = string
-		['&',',','-'].each do |syn_char|
-			escaped_string = escaped_string.gsub(syn_char,'\\\\' + "#{syn_char}")
+  def url_encode(string)
+    ['&','-','?','|','!'].each do |syn_char|
+			string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
 		end
-		return escaped_string
-	end
+    string = CGI.escape string
+    return string
+  end
 
 	# adds Campaign and Contact Id info to CampaignMember payload before processing
 	def add_ids_to_campaignmember(obj,instance_url,access_token)
 		campaign_id = obj["event"]["id"]
-		contact_email = add_escape_characters(obj["profile"]["email"])
-		contact_fn = add_escape_characters(obj["profile"]["first_name"])
-		contact_ln = add_escape_characters(obj["profile"]["last_name"])
-		contact_email = add_escape_characters(obj["order"]["email"]) if contact_email.nil?
-		campaign_search_string = ERB::Util.url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING Campaign(Id)"
-		contact_search_string = ERB::Util.url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING Contact(Id)"
-		campaign seach_string = escape_extra(campaign_seach_string)
-		contact_search_string = escape_extra(contact_search_string)
-		@campaign_query_response = RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}",
+		contact_email = obj["profile"]["email"]
+		contact_fn = obj["profile"]["first_name"]
+		contact_ln = obj["profile"]["last_name"]
+		contact_email = obj["order"]["email"] if contact_email.nil?
+		campaign_search_string =
+      url_encode("FIND {#{campaign_id}}" \
+      " IN ALL FIELDS RETURNING Campaign(Id)")
+		contact_search_string =
+      url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
+      " IN ALL FIELDS RETURNING Contact(Id)"
+		@campaign_query_response =
+      RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}",
 			{"Authorization" => "Bearer #{access_token}",
 			:accept => 'application/json',
 			:verify => false})
-		@contact_query_response = RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
-			{"Authorization" => "Bearer #{access_token}",
+		@contact_query_response =
+      RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
+      {"Authorization" => "Bearer #{access_token}",
 			:accept => 'application/json',
 			:verify => false})
     puts @contact_query_response
@@ -355,23 +369,26 @@ class EventbriteScrape
 		case
 		when object_type == "Campaign"
 			campaign_id = obj["id"]
-			search_string = ERB::Util.url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
+			search_string =
+        url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
 		when object_type == "Contact"
-			contact_fn = add_escape_characters(obj["profile"]["first_name"])
-			contact_ln = add_escape_characters(obj["profile"]["last_name"])
-			contact_email =  add_escape_characters(obj["profile"]["email"])
-			contact_email = add_escape_characters(obj["order"]["email"]) if contact_email.nil?
-			search_string = ERB::Util.url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}} IN ALL FIELDS RETURNING #{object_type}(Id)"
-      search_string = escape_extra(search_string)
+			contact_fn = obj["profile"]["first_name"]
+			contact_ln = obj["profile"]["last_name"]
+			contact_email =  obj["profile"]["email"]
+			contact_email = obj["order"]["email"] if contact_email.nil?
+      search_string =
+        url_encode("FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
+          " IN ALL FIELDS RETURNING #{object_type}(Id)")
 		when object_type == "CampaignMember"
 			contact_id = obj["ContactId"]
 			campaign_id = obj["CampaignId"]
 			type = "query"
-			search_string = ERB::Util.url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
-      search_string = escape_extra(search_string)
+			search_string =
+        url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
 		end
     puts search_string
-		@query_response = RestClient.get("#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}",
+		@query_response =
+      RestClient.get("#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}",
 			{"Authorization" => "Bearer #{access_token}",
 			:accept => 'application/json',
 			:verify => false})
@@ -392,20 +409,21 @@ end
 ARGV << '-h' if ARGV.empty?
 options = {}
 optparser = OptionParser.new do |opts|
- 	opts.banner = "\n-----------\nEventbriteScrape\n-----------\n\nUsage:ruby EventbriteScrape.rb [options]\n\n"
+ 	opts.banner =
+    "\n-----------\nEventbriteScrape\n-----------\n\nUsage:ruby EventbriteScrape.rb [options]\n\n"
 
  	options[:datescrape] = nil
- 	opts.on("-d", "--date STARTDATE [ENDDATE]",Array, "Scrape after a given date or between dates") do |d|
+ 	opts.on("-d", "--date STARTDATE [ENDDATE]",Array, "Scrape by dates") do |d|
  		options[:datescrape] = d
 	end
 
 	options[:eventscrape] = nil
-	opts.on("-e", "--event EID ...", Array, "Scrape a specific event based on EID") do |e|
+	opts.on("-e", "--event EID ...", Array, "Scrape a specific event using EID") do |e|
 		options[:eventscrape] = e
 	end
 
 	options[:venuescrape] = nil
-	opts.on("-v", "--venue VID ...", Array, "Scrape a specific event based on VID") do |v|
+	opts.on("-v", "--venue VID ...", Array, "Scrape a specific venue using VID") do |v|
 		options[:venuescrape] = v
 	end
 
