@@ -318,147 +318,146 @@ class EventbriteScrape
     return string
   end
 
-	# adds Campaign and Contact Id info to CampaignMember payload before processing
-	def add_ids_to_campaignmember(obj,instance_url,access_token)
-		campaign_id = obj["event"]["id"]
-		contact_email = obj["profile"]["email"]
-		contact_fn = obj["profile"]["first_name"]
-		contact_ln = obj["profile"]["last_name"]
-		contact_email = obj["order"]["email"] if contact_email.nil?
-		campaign_search_string =
-      url_encode("FIND {#{campaign_id}}" \
+  # adds Campaign and Contact Id info to CampaignMember payload before processing
+  def add_ids_to_campaignmember(obj,instance_url,access_token)
+    campaign_id = obj["event"]["id"]
+    contact_email = obj["profile"]["email"]
+    contact_fn = obj["profile"]["first_name"]
+    contact_ln = obj["profile"]["last_name"]
+    contact_email = obj["order"]["email"] if contact_email.nil?
+    campaign_search_string =
+    url_encode("FIND {#{campaign_id}}" \
       " IN ALL FIELDS RETURNING Campaign(Id)")
-		contact_search_string =
-      url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
+    contact_search_string =
+    url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
       " IN ALL FIELDS RETURNING Contact(Id)"
-		@campaign_query_response =
+    @campaign_query_response =
       RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}",
-			{"Authorization" => "Bearer #{access_token}",
-			:accept => 'application/json',
-			:verify => false})
-		@contact_query_response =
+      {"Authorization" => "Bearer #{access_token}",
+      :accept => 'application/json',
+      :verify => false})
+    @contact_query_response =
       RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
       {"Authorization" => "Bearer #{access_token}",
-			:accept => 'application/json',
-			:verify => false})
-    puts @contact_query_response
-		json_campaign = JSON.parse(@campaign_query_response)[0]
-		json_contact = JSON.parse(@contact_query_response)[0]
+      :accept => 'application/json',
+      :verify => false})
+    json_campaign = JSON.parse(@campaign_query_response)[0]
+    json_contact = JSON.parse(@contact_query_response)[0]
     unless json_contact.nil?
-		  obj.store("ContactId",json_contact["Id"])
-		  obj.store("CampaignId",json_campaign["Id"])
+      obj.store("ContactId",json_contact["Id"])
+      obj.store("CampaignId",json_campaign["Id"])
     else
-		  obj = nil
+      obj = nil
     end
-		return obj
-	end
+    return obj
+  end
 
-	# search salesforce for Eventbrite data
-	def search_salesforce(object_type,obj,instance_url,access_token)
-		type = "search"
-		case
-		when object_type == "Campaign"
-			campaign_id = obj["id"]
-			search_string =
+  # search salesforce for Eventbrite data
+  def search_salesforce(object_type,obj,instance_url,access_token)
+    type = "search"
+    case
+    when object_type == "Campaign"
+      campaign_id = obj["id"]
+      search_string =
         url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
-		when object_type == "Contact"
-			contact_fn = obj["profile"]["first_name"]
-			contact_ln = obj["profile"]["last_name"]
-			contact_email =  obj["profile"]["email"]
-			contact_email = obj["order"]["email"] if contact_email.nil?
+    when object_type == "Contact"
+      contact_fn = obj["profile"]["first_name"]
+      contact_ln = obj["profile"]["last_name"]
+      contact_email =  obj["profile"]["email"]
+      contact_email = obj["order"]["email"] if contact_email.nil?
       search_string =
         url_encode("FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
           " IN ALL FIELDS RETURNING #{object_type}(Id)")
-		when object_type == "CampaignMember"
-			contact_id = obj["ContactId"]
-			campaign_id = obj["CampaignId"]
-			type = "query"
-			search_string =
+    when object_type == "CampaignMember"
+      contact_id = obj["ContactId"]
+      campaign_id = obj["CampaignId"]
+      type = "query"
+      search_string =
         url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
-		end
-    puts search_string
-		@query_response =
+    end
+    @query_response =
       RestClient.get("#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}",
-			{"Authorization" => "Bearer #{access_token}",
-			:accept => 'application/json',
-			:verify => false})
-		return @query_response
-	end
+      {"Authorization" => "Bearer #{access_token}",
+      :accept => 'application/json',
+      :verify => false})
+    return @query_response
+  end
 
   # reads csv and generates a hash payload for API calls
   def build_payload_from_csv(csv, obj)
     payload = {}
-      csv.each do |row|
-        payload.store(row.first,get_nested_val(row.last.split('.'),obj))
-      end
+    csv.each do |row|
+      payload.store(row.first,get_nested_val(row.last.split('.'),obj))
+    end
     return payload
   end
+
 end
 
 # Command-line switching options via optparse
 ARGV << '-h' if ARGV.empty?
 options = {}
 optparser = OptionParser.new do |opts|
- 	opts.banner =
+  opts.banner =
     "\n-----------\nEventbriteScrape\n-----------\n\nUsage:ruby EventbriteScrape.rb [options]\n\n"
 
- 	options[:datescrape] = nil
- 	opts.on("-d", "--date STARTDATE [ENDDATE]",Array, "Scrape by dates") do |d|
- 		options[:datescrape] = d
-	end
+  options[:datescrape] = nil
+  opts.on("-d", "--date STARTDATE [ENDDATE]",Array, "Scrape by dates") do |d|
+    options[:datescrape] = d
+  end
 
-	options[:eventscrape] = nil
-	opts.on("-e", "--event EID ...", Array, "Scrape a specific event using EID") do |e|
-		options[:eventscrape] = e
-	end
+  options[:eventscrape] = nil
+  opts.on("-e", "--event EID ...", Array, "Scrape a specific event using EID") do |e|
+    options[:eventscrape] = e
+  end
 
-	options[:venuescrape] = nil
-	opts.on("-v", "--venue VID ...", Array, "Scrape a specific venue using VID") do |v|
-		options[:venuescrape] = v
-	end
+  options[:venuescrape] = nil
+  opts.on("-v", "--venue VID ...", Array, "Scrape a specific venue using VID") do |v|
+    options[:venuescrape] = v
+  end
 
-	options[:salesforcepush] = false
-	opts.on("-S", "--salesforce", "Post results of extract to Salesforce") do |s|
-		options[:salesforcepush] = true
-	end
+  options[:salesforcepush] = false
+  opts.on("-S", "--salesforce", "Post results of extract to Salesforce") do |s|
+    options[:salesforcepush] = true
+  end
 
-	opts.on_tail("-h", "--help", "Display this screen") do
-		puts opts
-		exit
-	end
+  opts.on_tail("-h", "--help", "Display this screen") do
+    puts opts
+    exit
+  end
 end.parse!
 
   if !options[:datescrape].nil?
-	  #check valid date format; if invalid, complain, and die.
-	  valid_date_format = EventbriteScrape.new.validate_dates(options[:datescrape])
-	  if !valid_date_format
-	    abort("Invalid date format. Try yyyy-mm-dd.")
-	  end
+    #check valid date format; if invalid, complain, and die.
+    valid_date_format = EventbriteScrape.new.validate_dates(options[:datescrape])
+    if !valid_date_format
+      abort("Invalid date format. Try yyyy-mm-dd.")
+    end
 
     eid = EventbriteScrape.new.get_eid_by_date(options[:datescrape])
-	  final_arr = EventbriteScrape.new.scrape("event",eid)
-		attendee_arr = EventbriteScrape.new.scrape("attendee", eid)
-	  EventbriteScrape.new.write_csv("event",final_arr)
-		EventbriteScrape.new.write_csv("attendee",attendee_arr)
+    final_arr = EventbriteScrape.new.scrape("event",eid)
+    attendee_arr = EventbriteScrape.new.scrape("attendee", eid)
+    EventbriteScrape.new.write_csv("event",final_arr)
+    EventbriteScrape.new.write_csv("attendee",attendee_arr)
   end
 
   if !options[:eventscrape].nil? && !options[:salesforcepush]
-		final_arr = EventbriteScrape.new.scrape("event",options[:eventscrape])
-		attendee_arr = EventbriteScrape.new.scrape("attendee", options[:eventscrape])
-		EventbriteScrape.new.write_csv("event",final_arr)
-	  EventbriteScrape.new.write_csv("attendee",attendee_arr)
+    final_arr = EventbriteScrape.new.scrape("event",options[:eventscrape])
+    attendee_arr = EventbriteScrape.new.scrape("attendee", options[:eventscrape])
+    EventbriteScrape.new.write_csv("event",final_arr)
+    EventbriteScrape.new.write_csv("attendee",attendee_arr)
   end
 
-	if !options[:eventscrape].nil? && options[:salesforcepush]
-		event_data_and_titles = EventbriteScrape.new.scrape("event",options[:eventscrape])
-		attendee_data_and_titles = EventbriteScrape.new.scrape("attendee", options[:eventscrape])
-		event_data = event_data_and_titles[1]
-		attendee_data = attendee_data_and_titles[1]
-		EventbriteScrape.new.all_to_salesforce(event_data,attendee_data)
-		EventbriteScrape.new.write_csv("event",event_data_and_titles)
-	  EventbriteScrape.new.write_csv("attendee",attendee_data_and_titles)
-	end
+  if !options[:eventscrape].nil? && options[:salesforcepush]
+    event_data_and_titles = EventbriteScrape.new.scrape("event",options[:eventscrape])
+    attendee_data_and_titles = EventbriteScrape.new.scrape("attendee", options[:eventscrape])
+    event_data = event_data_and_titles[1]
+    attendee_data = attendee_data_and_titles[1]
+    EventbriteScrape.new.all_to_salesforce(event_data,attendee_data)
+    EventbriteScrape.new.write_csv("event",event_data_and_titles)
+    EventbriteScrape.new.write_csv("attendee",attendee_data_and_titles)
+  end
 
-	if !options[:venuescrape].nil?
-		puts "Venue scrape is still under construction"
-	end
+  if !options[:venuescrape].nil?
+    puts "Venue scrape is still under construction"
+  end
