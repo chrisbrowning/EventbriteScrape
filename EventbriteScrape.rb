@@ -18,55 +18,53 @@ class EventbriteScrape
     #final_arr  -> a multi-dim array: final_arr =[titles],[json_arr]
     json_arr, titles, new_titles, final_arr = [],[],[],[]
 
-		pagination = TRUE if ["attendee","venue"].include?(type_to_scrape)
+    pagination = TRUE if ["attendee","venue"].include?(type_to_scrape)
 
-		arr_to_scrape.each do |obj|
-		  endpoint = get_api_endpoint(type_to_scrape, obj)
-		  json_file = get_json(endpoint)
-			#handles multiple-pages for api responses
-			if pagination
-			  pages = get_page_data(json_file)
-				while pages["page_count"] >= pages["page_number"]
-					# puts @pages["page_number"]
-					case
-					when type_to_scrape == "attendee"
-						json_file["attendees"].each do |a|
-							json_arr << a
-							new_titles = scrape_titles(a)
-							titles = titles | new_titles
-						end
-					when type_to_scrape == "venue"
-						json_file["venues"].each do |v|
-							json_arr << v
-							new_titles = scrape_titles(v)
-							titles = titles | new_titles
-						end
-					end
-					unless pages["page_count"] == pages["page_number"]
-						json_file = turn_page(endpoint + "&page=#{pages["page_number"]}")
-						pages = get_page_data(json_file)
-					else
-						break
-					end
-				end
-			else #single-page
-				new_titles = scrape_titles(json_file)
-				# puts @new_titles
-				titles = titles | new_titles
-				# puts @titles
-			  json_arr << json_file
-			end
-		end
-		final_arr = [titles],[json_arr]
-	end
+    arr_to_scrape.each do |obj|
+      endpoint = get_api_endpoint(type_to_scrape, obj)
+      json_file = get_json(endpoint)
+      #handles multiple-pages for api responses
+      if pagination
+        pages = get_page_data(json_file)
+        while pages["page_count"] >= pages["page_number"]
+          # puts @pages["page_number"]
+          case type_to_scrape
+          when "attendee"
+            json_file["attendees"].each do |a|
+              json_arr << a
+              new_titles = scrape_titles(a)
+              titles = titles | new_titles
+            end
+          when "venue"
+            json_file["venues"].each do |v|
+              json_arr << v
+              new_titles = scrape_titles(v)
+              titles = titles | new_titles
+            end
+          end
+          unless pages["page_count"] == pages["page_number"]
+            json_file = turn_page(endpoint + "&page=#{pages["page_number"]}")
+            pages = get_page_data(json_file)
+          else
+            break
+          end
+        end
+      else #single-page
+        new_titles = scrape_titles(json_file)
+        titles = titles | new_titles
+        json_arr << json_file
+      end
+    end
+  final_arr = [titles],[json_arr]
+  end
 
-	# reads pagination on Eventbrite API response
-	def get_page_data(json_file)
-		pages = {}
-		pages["page_count"] = json_file["pagination"]["page_count"]
-		pages["page_number"] = json_file["pagination"]["page_number"]
-		return pages
-	end
+  # reads pagination on Eventbrite API response
+  def get_page_data(json_file)
+    pages = {}
+    pages["page_count"] = json_file["pagination"]["page_count"]
+    pages["page_number"] = json_file["pagination"]["page_number"]
+    return pages
+  end
 
   # pulls title information from a hash-formatted JSON document
   def scrape_titles(json_file)
@@ -92,84 +90,81 @@ class EventbriteScrape
     new_hash.each do |prop|
       if prop[1].is_a? (Hash)
         current_buffer << prop[0]
-				puts "entering new hash method with current buffer = #{current_buffer}"
         new_titles = parse_hash_titles(new_titles,current_buffer,prop[1])
       else
         unless prop[1].nil?
           new_titles << [current_buffer,prop[0]].join('.')
-					puts 'Appending new titles with ' + prop[0] + " -- current buffer = #{current_buffer}"
         end
       end
     end
     return new_titles
   end
 
-	# writes CSV from json document using titles
-	def write_csv(type, final_arr)
-	  csv_data = CSV.generate do |csv|
-			val = []
-		  final_arr[0][0].each do |title|
-			  val << title
-			end
-			csv << val
-			final_arr[1].each do |elem|
-				elem.each do |doc|
-				  data = []
-				  # puts doc[0].is_a? (Hash)
-				  json_doc = JSON.generate(doc)
-			  	json_doc = JSON.parse(json_doc)
-				  final_arr[0][0].each do |key|
-				    key_array = key.split('.')
-				  	data << get_nested_val(key_array,json_doc)
-			  	end
-				csv << data
-			  end
-			end
-		end
-		File.write("#{type}_details.csv",csv_data)
-	end
+  # writes CSV from json document using titles
+  def write_csv(type, final_arr)
+    csv_data = CSV.generate do |csv|
+      val = []
+      final_arr[0][0].each do |title|
+        val << title
+      end
+      csv << val
+      final_arr[1].each do |elem|
+        elem.each do |doc|
+          data = []
+          json_doc = JSON.generate(doc)
+          json_doc = JSON.parse(json_doc)
+          final_arr[0][0].each do |key|
+            key_array = key.split('.')
+            data << get_nested_val(key_array,json_doc)
+          end
+          csv << data
+        end
+      end
+    end
+    File.write("#{type}_details.csv",csv_data)
+  end
 
-	def get_nested_val(key_array,json_doc)
-		current_doc = json_doc
-		key_array.each do |key|
-		  unless current_doc[key].nil?
-		    current_doc = current_doc[key]
-		 	 	@get_val = current_doc
-		  else
-		    return nil
-		  end
-		end
-		return @get_val
-	end
+  def get_nested_val(key_array,json_doc)
+    current_doc = json_doc
+    key_array.each do |key|
+      unless current_doc[key].nil?
+        current_doc = current_doc[key]
+        @get_val = current_doc
+      else
+        return nil
+      end
+    end
+    return @get_val
+  end
 
-	#given a particular type, returns the correct endpoint for api calls
-	def get_api_endpoint(type_to_scrape, obj)
-		reader = CSV.read('eventbrite_key.csv')
+  #given a particular type, returns the correct endpoint for api calls
+  def get_api_endpoint(type_to_scrape, obj)
+    reader = CSV.read('eventbrite_key.csv')
     token = reader.shift[0]
     organizer_id = reader.shift[0]
-		prefix = "https://www.eventbriteapi.com/v3"
-		case
-		when type_to_scrape == "eid"
-		  endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
-                "?status=ended&order_by=start_desc&token=#{token}"
-		when type_to_scrape == "event"
-			endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
-		when type_to_scrape == "attendee"
-			endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=" \
-                 "category,attendees,subcategory,format,venue,event" \
-                 ",ticket_classes,organizer,order,promotional_code"
-		when type_to_scrape == "venue"
-			endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
-		end
-	end
+    prefix = "https://www.eventbriteapi.com/v3"
+    case
+    when type_to_scrape == "eid"
+      endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
+        "?status=ended&order_by=start_desc&token=#{token}"
+    when type_to_scrape == "event"
+      endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
+    when type_to_scrape == "attendee"
+      endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=" \
+        "category,attendees,subcategory,format,venue,event" \
+        ",ticket_classes,organizer,order,promotional_code"
+    when type_to_scrape == "venue"
+      endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
+    end
+  end
 
   # validate date formats: YYYY-MM-DD
   def validate_dates(dates)
-		date_format = /(2009|201[0-5])-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])/
-		dates.each do |d|
-		  date_format.match(d).nil? \
-			? false : true
-		end
+    date_format = /(2009|201[0-5])-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])/
+    dates.each do |d|
+      date_format.match(d).nil? \
+      ? false : true
+    end
   end
 
   # loop through user_owned_events and return a list of eids for events within a
