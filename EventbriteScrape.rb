@@ -144,7 +144,7 @@ class EventbriteScrape
     case
     when type_to_scrape == "eid"
       endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
-        "?status=ended&order_by=start_desc&token=#{token}"
+        "?order_by=start_desc&token=#{token}"
     when type_to_scrape == "event"
       endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
     when type_to_scrape == "attendee"
@@ -279,31 +279,22 @@ class EventbriteScrape
       next if obj.nil?
       json_payload = get_json_payload(object_type,obj)
       query_response = search_salesforce(object_type,obj,instance_url,access_token)
+      # rest api call parameters
       unless query_response == "[]" || query_response == '{"totalSize":0,"done":true,"records":[]}'
-      if object_type == "CampaignMember"
-        json_response = JSON.parse(query_response)
+        if object_type == "CampaignMember"
+          json_response = JSON.parse(query_response)
+        else
+          json_response = JSON.parse(query_response)[0]
+        end
+        # tentatively patch only-if object is not campaignmember
+        # limited in what can be updated on CampaignMember
+        response_id = json_response["Id"]
+        base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
+        response =
+          rest_call("patch",base_uri,json_payload,access_token) if object_type != "CampaignMember"
       else
-        json_response = JSON.parse(query_response)[0]
-      end
-
-      # tentatively patch only-if object is not campaignmember
-      # limited in what can be updated on CampaignMember
-      response_id = json_response["Id"]
-      @response = RestClient.patch("#{instance_url}/services/data/" \
-        "v29.0/sobjects/#{object_type}/#{response_id}",
-        json_payload,
-        {"Authorization" => "Bearer #{access_token}",
-        :content_type => 'application/json',
-        :accept => 'application/json',
-        :verify => false}) if object_type != "CampaignMember"
-      else
-        @response = RestClient.post("#{instance_url}/services/data/v29.0/sobjects/#{object_type}/",
-          json_payload,
-          {"Authorization" => "Bearer #{access_token}",
-          :content_type => 'application/json',
-          :accept => 'application/json',
-          :verify => false})
-          json_response = JSON.parse(@response)
+        base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
+        response = rest_call("post",base_uri,json_payload,access_token)
       end
     end
   end
@@ -326,23 +317,17 @@ class EventbriteScrape
     contact_ln = obj["profile"]["last_name"]
     contact_email = obj["order"]["email"] if contact_email.nil?
     campaign_search_string =
-    url_encode("FIND {#{campaign_id}}" \
+      url_encode("FIND {#{campaign_id}}" \
       " IN ALL FIELDS RETURNING Campaign(Id)")
     contact_search_string =
-    url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
+      url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
       " IN ALL FIELDS RETURNING Contact(Id)"
-    @campaign_query_response =
-      RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}",
-      {"Authorization" => "Bearer #{access_token}",
-      :accept => 'application/json',
-      :verify => false})
-    @contact_query_response =
-      RestClient.get("#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
-      {"Authorization" => "Bearer #{access_token}",
-      :accept => 'application/json',
-      :verify => false})
-    json_campaign = JSON.parse(@campaign_query_response)[0]
-    json_contact = JSON.parse(@contact_query_response)[0]
+    campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
+    campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
+    contact_base_uri"#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
+    contact_query_response = rest_call("get",contact_base_uri,json_payload,access_token)
+    json_campaign = JSON.parse(campaign_query_response)[0]
+    json_contact = JSON.parse(contact_query_response)[0]
     unless json_contact.nil?
       obj.store("ContactId",json_contact["Id"])
       obj.store("CampaignId",json_campaign["Id"])
@@ -375,12 +360,55 @@ class EventbriteScrape
       search_string =
         url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
     end
-    @query_response =
-      RestClient.get("#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}",
+    base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
+    json_payload = nil
+    query_response = rest_call("get",base_uri,json_payload,access_token)
+    return query_response
+  end
+
+  # method for calling rest api
+  def rest_call(call,base_uri,json_payload,access_token)
+    params =
       {"Authorization" => "Bearer #{access_token}",
+      :content_type => 'application/json',
       :accept => 'application/json',
-      :verify => false})
-    return @query_response
+      :verify => false}
+    case call
+    when "get"
+      response = rest_get(base_uri,params)
+    when "post"
+      response = rest_post(base_uri,json_payload,params)
+    when "patch"
+      response = rest_patch(base_uri,json_payload,params)
+    end
+    return response
+  end
+
+  # method for handling HTTP-GET calls
+  def rest_get(base_uri,params)
+    begin
+      @response = RestClient.get(base_uri,params)
+    rescue => e
+      abort(e.response)
+    end
+  end
+
+  # method for handling HTTP-POST calls
+  def rest_post(base_uri,json_payload,params)
+    begin
+      @response = RestClient.post(base_uri,json_payload,params)
+    rescue => e
+      abort(e.response)
+    end
+  end
+
+  # method for handling HTTP-PATCH calls
+  def rest_patch(base_uri,json_payload,params)
+    begin
+      @response = RestClient.patch(base_uri,json_payload,params)
+    rescue => e
+      abort(e.response)
+    end
   end
 
   # reads csv and generates a hash payload for API calls
@@ -427,7 +455,7 @@ optparser = OptionParser.new do |opts|
   end
 end.parse!
 
-  if !options[:datescrape].nil?
+  if !options[:datescrape].nil? && !options[:salesforcepush]
     #check valid date format; if invalid, complain, and die.
     valid_date_format = EventbriteScrape.new.validate_dates(options[:datescrape])
     if !valid_date_format
@@ -439,6 +467,23 @@ end.parse!
     attendee_arr = EventbriteScrape.new.scrape("attendee", eid)
     EventbriteScrape.new.write_csv("event",final_arr)
     EventbriteScrape.new.write_csv("attendee",attendee_arr)
+  end
+
+  if !options[:datescrape].nil? && options[:salesforcepush]
+    #check valid date format; if invalid, complain, and die.
+    valid_date_format = EventbriteScrape.new.validate_dates(options[:datescrape])
+    if !valid_date_format
+      abort("Invalid date format. Try yyyy-mm-dd.")
+    end
+
+    eid = EventbriteScrape.new.get_eid_by_date(options[:datescrape])
+    event_data_and_titles = EventbriteScrape.new.scrape("event",eid)
+    attendee_data_and_titles = EventbriteScrape.new.scrape("attendee", eid)
+    event_data = event_data_and_titles[1]
+    attendee_data = attendee_data_and_titles[1]
+    EventbriteScrape.new.all_to_salesforce(event_data,attendee_data)
+    EventbriteScrape.new.write_csv("event",event_data_and_titles)
+    EventbriteScrape.new.write_csv("attendee",attendee_data_and_titles)
   end
 
   if !options[:eventscrape].nil? && !options[:salesforcepush]
