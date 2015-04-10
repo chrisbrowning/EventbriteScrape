@@ -18,29 +18,21 @@ class EventbriteScrape
     #final_arr  -> a multi-dim array: final_arr =[titles],[json_arr]
     json_arr, titles, new_titles, final_arr = [],[],[],[]
 
-    pagination = TRUE if ["attendee","venue"].include?(type_to_scrape)
+    pagination = TRUE if type_to_scrape == "attendee"
 
     arr_to_scrape.each do |obj|
       endpoint = get_api_endpoint(type_to_scrape, obj)
+      puts endpoint
       json_file = get_json(endpoint)
       #handles multiple-pages for api responses
       if pagination
         pages = get_page_data(json_file)
         while pages["page_count"] >= pages["page_number"]
           # puts @pages["page_number"]
-          case type_to_scrape
-          when "attendee"
-            json_file["attendees"].each do |a|
-              json_arr << a
-              new_titles = scrape_titles(a)
-              titles = titles | new_titles
-            end
-          when "venue"
-            json_file["venues"].each do |v|
-              json_arr << v
-              new_titles = scrape_titles(v)
-              titles = titles | new_titles
-            end
+          json_file["attendees"].each do |a|
+            json_arr << a
+            new_titles = scrape_titles(a)
+            titles = titles | new_titles
           end
           unless pages["page_count"] == pages["page_number"]
             json_file = turn_page(endpoint + "&page=#{pages["page_number"]}")
@@ -137,22 +129,24 @@ class EventbriteScrape
 
   #given a particular type, returns the correct endpoint for api calls
   def get_api_endpoint(type_to_scrape, obj)
-    reader = CSV.read('eventbrite_key.csv')
+    reader = CSV.read('keys/eventbrite_key.csv')
     token = reader.shift[0]
     organizer_id = reader.shift[0]
     prefix = "https://www.eventbriteapi.com/v3"
-    case
-    when type_to_scrape == "eid"
+    case type_to_scrape
+    when "eid"
       endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
         "?order_by=start_desc&token=#{token}"
-    when type_to_scrape == "event"
+    when "event"
       endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
-    when type_to_scrape == "attendee"
+    when "attendee"
       endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=" \
         "category,attendees,subcategory,format,venue,event" \
         ",ticket_classes,organizer,order,promotional_code"
-    when type_to_scrape == "venue"
+    when "vid"
       endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
+    when "venue"
+      endpoint = "#{prefix}/venues/#{obj}/?token=#{token}"
     end
   end
 
@@ -193,11 +187,29 @@ class EventbriteScrape
     return eid
   end
 
+  def get_vid()
+    vid = []
+    endpoint = get_api_endpoint("vid",nil)
+    json_file = get_json(endpoint)
+    begin
+      page_count = json_file["pagination"]["page_count"]
+      page_number = json_file["pagination"]["page_number"]
+      last_page = (page_count == page_number)
+      venues = json_file["venues"]
+      venues.each do |venue|
+        vid << venue["id"]
+      end
+      json_file = turn_page(endpoint + "&page=#{page_number}") unless last_page
+    end until last_page
+    return vid
+  end
+
   #turns the page on a paginated Eventbrite API JSON document
   def turn_page(old_url)
     split_old_url = old_url.split('&page=')
     new_url_prefix = split_old_url.first + "&page="
     new_url = new_url_prefix + (split_old_url.last.to_i + 1).to_s
+    puts new_url
     json_file = get_json(new_url)
   end
 
@@ -207,10 +219,6 @@ class EventbriteScrape
     while @response.nil? do
       if @response.code == 200
         @response = RestClient.get url
-      elsif @response.code == 503
-        return 0 # do something here
-      else
-        return 1 # do something else here
       end
     end
     @json_file = JSON.parse(@response)
@@ -241,19 +249,25 @@ class EventbriteScrape
   def get_json_payload(object_type,obj)
     case
     when object_type == "Campaign"
-      csv = CSV.read('campaign_fields.csv')
+      csv = CSV.read('data/campaign_fields.csv')
     when object_type == "Contact"
-      csv = CSV.read('contact_fields.csv')
+      csv = CSV.read('data/contact_fields.csv')
     when object_type == "CampaignMember"
-      csv = CSV.read('campaignmember_fields.csv')
+      csv = CSV.read('data/campaignmember_fields.csv')
+    when object_type == "CampaignMemberPatch"
+      csv = CSV.read("data/campaignmemberpatch_fields.csv")
     end
     payload = build_payload_from_csv(csv,obj)
+    # Short-term solution to excessive titles
+    if object_type == "Campaign"
+      payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
+    end
     json_payload = JSON.generate(payload)
   end
 
   # initiate API authentication and return hash of auth values
   def get_rest_authentication()
-    reader = CSV.open('sf_key.csv')
+    reader = CSV.open('keys/sf_key.csv')
     client_id = reader.shift[0]
     client_secret = reader.shift[0]
     username = reader.shift[0]
@@ -262,8 +276,6 @@ class EventbriteScrape
       "&client_secret=#{client_secret}" \
       "&username=#{username}&password=#{password}"
     params = {:accept => 'application/json'}
-    # puts $oauth_token_endpoint
-    # puts auth_payload
     @auth_response = RestClient.post $oauth_token_endpoint, auth_payload, params
     auth_json = JSON.parse(@auth_response)
     auth_vals = {"access_token" => auth_json["access_token"],
@@ -282,16 +294,19 @@ class EventbriteScrape
       # rest api call parameters
       unless query_response == "[]" || query_response == '{"totalSize":0,"done":true,"records":[]}'
         if object_type == "CampaignMember"
+          json_payload = get_json_payload("CampaignMemberPatch",obj)
           json_response = JSON.parse(query_response)
+          response_id = json_response["records"][0]["Id"]
+          base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
+          response =
+            rest_call("patch",base_uri,json_payload,access_token)
         else
           json_response = JSON.parse(query_response)[0]
+          response_id = json_response["Id"]
+          base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
+          response =
+            rest_call("patch",base_uri,json_payload,access_token)
         end
-        # tentatively patch only-if object is not campaignmember
-        # limited in what can be updated on CampaignMember
-        response_id = json_response["Id"]
-        base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-        response =
-          rest_call("patch",base_uri,json_payload,access_token) if object_type != "CampaignMember"
       else
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
         response = rest_call("post",base_uri,json_payload,access_token)
@@ -311,11 +326,14 @@ class EventbriteScrape
 
   # adds Campaign and Contact Id info to CampaignMember payload before processing
   def add_ids_to_campaignmember(obj,instance_url,access_token)
+    json_payload = nil
     campaign_id = obj["event"]["id"]
     contact_email = obj["profile"]["email"]
     contact_fn = obj["profile"]["first_name"]
     contact_ln = obj["profile"]["last_name"]
     contact_email = obj["order"]["email"] if contact_email.nil?
+    checked_in = nil
+    checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
       url_encode("FIND {#{campaign_id}}" \
       " IN ALL FIELDS RETURNING Campaign(Id)")
@@ -323,14 +341,17 @@ class EventbriteScrape
       url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
       " IN ALL FIELDS RETURNING Contact(Id)"
     campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
-    campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
-    contact_base_uri"#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}",
+    begin
+      campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
+      @json_campaign = JSON.parse(campaign_query_response)[0]
+    end until !@json_campaign.nil?
+    contact_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}"
     contact_query_response = rest_call("get",contact_base_uri,json_payload,access_token)
-    json_campaign = JSON.parse(campaign_query_response)[0]
     json_contact = JSON.parse(contact_query_response)[0]
     unless json_contact.nil?
       obj.store("ContactId",json_contact["Id"])
-      obj.store("CampaignId",json_campaign["Id"])
+      obj.store("CampaignId",@json_campaign["Id"])
+      obj.store("Status",checked_in) unless checked_in.nil?
     else
       obj = nil
     end
@@ -403,6 +424,7 @@ class EventbriteScrape
   end
 
   # method for handling HTTP-PATCH calls
+  # also, enforces "patch-only if field is empty" rule
   def rest_patch(base_uri,json_payload,params)
     begin
       @response = RestClient.patch(base_uri,json_payload,params)
@@ -439,9 +461,9 @@ optparser = OptionParser.new do |opts|
     options[:eventscrape] = e
   end
 
-  options[:venuescrape] = nil
-  opts.on("-v", "--venue VID ...", Array, "Scrape a specific venue using VID") do |v|
-    options[:venuescrape] = v
+  options[:venuescrape] = false
+  opts.on("-v", "--venue", "Scrape venues") do |v|
+    options[:venuescrape] = true
   end
 
   options[:salesforcepush] = false
@@ -503,6 +525,9 @@ end.parse!
     EventbriteScrape.new.write_csv("attendee",attendee_data_and_titles)
   end
 
-  if !options[:venuescrape].nil?
+  if options[:venuescrape]
     puts "Venue scrape is still under construction"
+    vid = EventbriteScrape.new.get_vid()
+    venue_data = EventbriteScrape.new.scrape("venue",vid)
+    EventbriteScrape.new.write_csv("venue",venue_data)
   end
