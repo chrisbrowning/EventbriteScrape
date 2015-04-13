@@ -22,7 +22,6 @@ class EventbriteScrape
 
     arr_to_scrape.each do |obj|
       endpoint = get_api_endpoint(type_to_scrape, obj)
-      puts endpoint
       json_file = get_json(endpoint)
       #handles multiple-pages for api responses
       if pagination
@@ -209,7 +208,6 @@ class EventbriteScrape
     split_old_url = old_url.split('&page=')
     new_url_prefix = split_old_url.first + "&page="
     new_url = new_url_prefix + (split_old_url.last.to_i + 1).to_s
-    puts new_url
     json_file = get_json(new_url)
   end
 
@@ -317,7 +315,7 @@ class EventbriteScrape
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
   # when refactoring -- make sure not to use gsub! as it may alter the original API data
   def url_encode(string)
-    ['&','-','?','|','!'].each do |syn_char|
+    ['&','-','?','|','!',"'"].each do |syn_char|
       string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
     end
     string = CGI.escape string
@@ -381,6 +379,7 @@ class EventbriteScrape
       search_string =
         url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
     end
+    puts search_string
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
