@@ -261,6 +261,7 @@ class EventbriteScrape
     if object_type == "Campaign"
       payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
     elsif object_type == "Contact"
+      puts payload
       payload["Email"] = payload["Email"].gsub(',','')
     end
     json_payload = JSON.generate(payload)
@@ -342,17 +343,17 @@ class EventbriteScrape
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
-      url_encode
-        "FIND {#{campaign_id}}
-        IN ALL FIELDS
-        RETURNING Campaign(Id)")
+      url_encode(
+        "FIND {#{campaign_id}}" \
+        " IN ALL FIELDS" \
+        " RETURNING Campaign(Id)")
     contact_search_string =
-      url_encode
-      "FIND {#{contact_fn}
-      AND #{contact_ln}
-      AND #{contact_email}}
-      IN ALL FIELDS
-      RETURNING Contact(Id)"
+      url_encode(
+      "FIND {#{contact_fn}" \
+      " AND #{contact_ln}" \
+      " AND #{contact_email}}" \
+      " IN ALL FIELDS" \
+      " RETURNING Contact(Id)")
     campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
     begin
       campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
@@ -378,10 +379,10 @@ class EventbriteScrape
     when object_type == "Campaign"
       campaign_id = obj["id"]
       search_string =
-        url_encode
-          "FIND {#{campaign_id}}
-          IN ALL FIELDS
-          RETURNING #{object_type}(Id)"
+        url_encode(
+          "FIND {#{campaign_id}}" \
+          " IN ALL FIELDS" \
+          " RETURNING #{object_type}(Id)")
     when object_type == "Contact"
       contact_fn = escape_characters(obj["profile"]["first_name"])
       contact_ln = escape_characters(obj["profile"]["last_name"])
@@ -389,22 +390,22 @@ class EventbriteScrape
       contact_email = obj["order"]["email"] if contact_email.nil?
       contact_email = escape_characters(contact_email)
       search_string =
-        url_encode
-          "FIND {#{contact_fn}
-          AND #{contact_ln}
-          AND #{contact_email}}
-          IN ALL FIELDS
-          RETURNING #{object_type}(Id)"
+        url_encode(
+          "FIND {#{contact_fn}" \
+          " AND #{contact_ln}" \
+          " AND #{contact_email}}" \
+          " IN ALL FIELDS" \
+          " RETURNING #{object_type}(Id)")
     when object_type == "CampaignMember"
       contact_id = obj["ContactId"]
       campaign_id = obj["CampaignId"]
       type = "query"
       search_string =
-        url_encode
-          "SELECT Id
-          FROM CampaignMember
-          WHERE CampaignId='#{campaign_id}'
-          AND ContactId='#{contact_id}'"
+        url_encode(
+          "SELECT Id" \
+          " FROM CampaignMember" \
+          " WHERE CampaignId='#{campaign_id}'" \
+          " AND ContactId='#{contact_id}'")
     end
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
