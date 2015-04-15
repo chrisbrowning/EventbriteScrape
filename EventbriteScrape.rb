@@ -3,6 +3,7 @@ require 'csv'  # for parsing locally-stored authentication data and exporting Ev
 require 'rest-client'  # framework for calling APIs
 require 'optparse'  # framework for applciation CLI
 require 'cgi'  # handles URL encoding for SF rest API calls
+require 'valid_email' # email validation
 
 class EventbriteScrape
 
@@ -256,9 +257,11 @@ class EventbriteScrape
       csv = CSV.read("data/campaignmemberpatch_fields.csv")
     end
     payload = build_payload_from_csv(csv,obj)
-    # Short-term solution to excessive titles
+    # Short-term solution to excessive titles and incorrect titles
     if object_type == "Campaign"
       payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
+    elsif object_type == "Contact"
+      payload["Email"] = payload["Email"].gsub(',','')
     end
     json_payload = JSON.generate(payload)
   end
@@ -312,13 +315,18 @@ class EventbriteScrape
     end
   end
 
+  # encode a string for use in rest call
+  def url_encode(string)
+    string = CGI.escape string
+    return string
+  end
+
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
   # when refactoring -- make sure not to use gsub! as it may alter the original API data
-  def url_encode(string)
-    ['&','-','?','|','!',"'"].each do |syn_char|
+  def escape_characters(string)
+    ['&','-','?','|','!',"'",'+'].each do |syn_char|
       string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
     end
-    string = CGI.escape string
     return string
   end
 
@@ -327,17 +335,24 @@ class EventbriteScrape
     json_payload = nil
     campaign_id = obj["event"]["id"]
     contact_email = obj["profile"]["email"]
-    contact_fn = obj["profile"]["first_name"]
-    contact_ln = obj["profile"]["last_name"]
+    contact_fn = escape_characters(obj["profile"]["first_name"])
+    contact_ln = escape_characters(obj["profile"]["last_name"])
     contact_email = obj["order"]["email"] if contact_email.nil?
+    contact_email = escape_characters(contact_email)
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
-      url_encode("FIND {#{campaign_id}}" \
-      " IN ALL FIELDS RETURNING Campaign(Id)")
+      url_encode
+        "FIND {#{campaign_id}}
+        IN ALL FIELDS
+        RETURNING Campaign(Id)")
     contact_search_string =
-      url_encode "FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
-      " IN ALL FIELDS RETURNING Contact(Id)"
+      url_encode
+      "FIND {#{contact_fn}
+      AND #{contact_ln}
+      AND #{contact_email}}
+      IN ALL FIELDS
+      RETURNING Contact(Id)"
     campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
     begin
       campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
@@ -363,23 +378,34 @@ class EventbriteScrape
     when object_type == "Campaign"
       campaign_id = obj["id"]
       search_string =
-        url_encode "FIND {#{campaign_id}} IN ALL FIELDS RETURNING #{object_type}(Id)"
+        url_encode
+          "FIND {#{campaign_id}}
+          IN ALL FIELDS
+          RETURNING #{object_type}(Id)"
     when object_type == "Contact"
-      contact_fn = obj["profile"]["first_name"]
-      contact_ln = obj["profile"]["last_name"]
+      contact_fn = escape_characters(obj["profile"]["first_name"])
+      contact_ln = escape_characters(obj["profile"]["last_name"])
       contact_email =  obj["profile"]["email"]
       contact_email = obj["order"]["email"] if contact_email.nil?
+      contact_email = escape_characters(contact_email)
       search_string =
-        url_encode("FIND {#{contact_fn} AND #{contact_ln} AND #{contact_email}}" \
-          " IN ALL FIELDS RETURNING #{object_type}(Id)")
+        url_encode
+          "FIND {#{contact_fn}
+          AND #{contact_ln}
+          AND #{contact_email}}
+          IN ALL FIELDS
+          RETURNING #{object_type}(Id)"
     when object_type == "CampaignMember"
       contact_id = obj["ContactId"]
       campaign_id = obj["CampaignId"]
       type = "query"
       search_string =
-        url_encode "Select Id from CampaignMember Where CampaignId='#{campaign_id}' AND ContactId='#{contact_id}'"
+        url_encode
+          "SELECT Id
+          FROM CampaignMember
+          WHERE CampaignId='#{campaign_id}'
+          AND ContactId='#{contact_id}'"
     end
-    puts search_string
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
