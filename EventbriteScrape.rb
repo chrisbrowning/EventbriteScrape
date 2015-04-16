@@ -3,7 +3,6 @@ require 'csv'  # for parsing locally-stored authentication data and exporting Ev
 require 'rest-client'  # framework for calling APIs
 require 'optparse'  # framework for applciation CLI
 require 'cgi'  # handles URL encoding for SF rest API calls
-require 'valid_email' # email validation
 
 class EventbriteScrape
 
@@ -261,7 +260,7 @@ class EventbriteScrape
     if object_type == "Campaign"
       payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
     elsif object_type == "Contact"
-      puts payload
+      payload["Email"] = obj["order"]["email"] if obj["profile"]["email"].nil?
       payload["Email"] = payload["Email"].gsub(',','')
     end
     json_payload = JSON.generate(payload)
@@ -283,6 +282,8 @@ class EventbriteScrape
     auth_vals = {"access_token" => auth_json["access_token"],
       "instance_url" => auth_json["instance_url"]}
   end
+
+  # method: search_campaign_or_contact(
 
   # test method for experimenting with Salesforce & Eventbrite REST API Calls
   def push_data_to_salesforce(object_type,data,auth_vals)
@@ -319,7 +320,6 @@ class EventbriteScrape
   # encode a string for use in rest call
   def url_encode(string)
     string = CGI.escape string
-    return string
   end
 
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
@@ -410,7 +410,7 @@ class EventbriteScrape
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
-    return query_response
+    # return query_response
   end
 
   # method for calling rest api
@@ -436,17 +436,20 @@ class EventbriteScrape
     begin
       @response = RestClient.get(base_uri,params)
     rescue => e
-      abort(e.response)
+      puts @response.code
     end
+    return @response
   end
 
   # method for handling HTTP-POST calls
   def rest_post(base_uri,json_payload,params)
     begin
+      puts base_uri,json_payload
       @response = RestClient.post(base_uri,json_payload,params)
     rescue => e
-      abort(e.response)
+      puts @response.code
     end
+    return @response
   end
 
   # method for handling HTTP-PATCH calls
@@ -455,8 +458,9 @@ class EventbriteScrape
     begin
       @response = RestClient.patch(base_uri,json_payload,params)
     rescue => e
-      abort(e.response)
+      puts @response.code
     end
+    return @response
   end
 
   # reads csv and generates a hash payload for API calls
