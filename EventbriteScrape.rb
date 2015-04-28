@@ -1,13 +1,7 @@
-require 'json' # for parsing and building api response data
-require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
-require 'rest-client'  # framework for calling APIs
-require 'optparse'  # framework for applciation CLI
-require 'cgi'  # handles URL encoding for SF rest API calls
-
 class EventbriteScrape
 
   # not-sensitive auth values
-  $oauth_prefix = 'https://test.salesforce.com'
+  $oauth_prefix = ENV['sf_oauth_prefix']
   $oauth_auth_endpoint =  "#{$oauth_prefix}/services/oauth2/authorize"
   $oauth_token_endpoint = "#{$oauth_prefix}/services/oauth2/token"
 
@@ -110,7 +104,7 @@ class EventbriteScrape
         end
       end
     end
-    File.write("#{type}_details.csv",csv_data)
+    File.write("data_dump/#{type}_details.csv",csv_data)
   end
 
   def get_nested_val(key_array,json_doc)
@@ -128,9 +122,8 @@ class EventbriteScrape
 
   #given a particular type, returns the correct endpoint for api calls
   def get_api_endpoint(type_to_scrape, obj)
-    reader = CSV.read('keys/eventbrite_key.csv')
-    token = reader.shift[0]
-    organizer_id = reader.shift[0]
+    token = ENV['eventbrite_api_key']
+    organizer_id = ENV['eventbrite_organizer_id']
     prefix = "https://www.eventbriteapi.com/v3"
     case type_to_scrape
     when "eid"
@@ -268,11 +261,10 @@ class EventbriteScrape
 
   # initiate API authentication and return hash of auth values
   def get_rest_authentication()
-    reader = CSV.open('keys/sf_key.csv')
-    client_id = reader.shift[0]
-    client_secret = reader.shift[0]
-    username = reader.shift[0]
-    password = reader.shift[0]
+    client_id = ENV['sf_client_id']
+    client_secret = ENV['sf_client_secret']
+    username = ENV['sf_username']
+    password = ENV['sf_password']
     auth_payload = "grant_type=password&client_id=#{client_id}" \
       "&client_secret=#{client_secret}" \
       "&username=#{username}&password=#{password}"

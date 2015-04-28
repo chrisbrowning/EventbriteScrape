@@ -1,0 +1,10 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    json (1.8.2)
+
+PLATFORMS
+  x64-mingw32
+
+DEPENDENCIES
+  json
