@@ -1,3 +1,12 @@
+require 'rubygems'
+require 'bundler/setup'
+require 'json' # for parsing and building api response data
+require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
+require 'rest-client'  # framework for calling APIs
+require 'optparse'  # framework for applciation CLI
+require 'cgi'  # handles URL encoding for SF rest API calls
+require 'figaro' # dependency management
+
 class EventbriteScrape
 
   # not-sensitive auth values
@@ -69,11 +78,13 @@ class EventbriteScrape
   end
 
   #recursive method for parsing multiple levels of JSON document
-  def parse_hash_titles(new_titles,current_buffer,new_hash)
+  def parse_hash_titles(new_titles,starting_buffer,new_hash)
+    current_buffer = starting_buffer
     new_hash.each do |prop|
       if prop[1].is_a? (Hash)
         current_buffer << prop[0]
         new_titles = parse_hash_titles(new_titles,current_buffer,prop[1])
+        current_buffer = starting_buffer
       else
         unless prop[1].nil?
           new_titles << [current_buffer,prop[0]].join('.')
@@ -123,7 +134,7 @@ class EventbriteScrape
   #given a particular type, returns the correct endpoint for api calls
   def get_api_endpoint(type_to_scrape, obj)
     token = ENV['eventbrite_api_key']
-    organizer_id = ENV['eventbrite_organizer_id']
+    organizer_id = ENV["eventbrite_organizer_id"]
     prefix = "https://www.eventbriteapi.com/v3"
     case type_to_scrape
     when "eid"
@@ -206,12 +217,17 @@ class EventbriteScrape
 
   #rest api-calling method; returns api response as a json object
   def get_json(url)
-    @response = RestClient.get url
-    while @response.nil? do
-      if @response.code == 200
-        @response = RestClient.get url
+    puts url
+    begin
+      @response = RestClient.get url
+      while @response.nil? do
+        if @response.code == 200
+          @response = RestClient.get url
+        end
       end
+    rescue => e
     end
+    puts @response.code
     @json_file = JSON.parse(@response)
   end
 
@@ -465,6 +481,9 @@ class EventbriteScrape
   end
 
 end
+
+Figaro.application = Figaro::Application.new(environment: "production", path: "./config/application.yml")
+Figaro.load
 
 # Command-line switching options via optparse
 ARGV << '-h' if ARGV.empty?
