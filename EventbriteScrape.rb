@@ -9,11 +9,6 @@ require 'figaro' # dependency management
 
 class EventbriteScrape
 
-  # not-sensitive auth values
-  $oauth_prefix = ENV['sf_oauth_prefix']
-  $oauth_auth_endpoint =  "#{$oauth_prefix}/services/oauth2/authorize"
-  $oauth_token_endpoint = "#{$oauth_prefix}/services/oauth2/token"
-
   def scrape(type_to_scrape, arr_to_scrape)
     #json_arr   -> used to store all json objects from api responses
     #titles     -> aggregate array of all unique properties of the json responses
@@ -64,10 +59,11 @@ class EventbriteScrape
   def scrape_titles(json_file)
     new_titles = []
     json_file.each do |prop|
+      previous_buffer = []
       current_buffer = []
       if prop[1].is_a? (Hash)
         current_buffer << prop[0]
-        new_titles = parse_hash_titles(new_titles,current_buffer,prop[1])
+        new_titles = parse_hash_titles(new_titles,current_buffer,previous_buffer,prop[1])
       else
         unless prop[1].nil?
           new_titles << prop[0]
@@ -78,15 +74,16 @@ class EventbriteScrape
   end
 
   #recursive method for parsing multiple levels of JSON document
-  def parse_hash_titles(new_titles,starting_buffer,new_hash)
-    current_buffer = starting_buffer
+  def parse_hash_titles(new_titles,current_buffer,previous_buffer,new_hash)
+    previous_buffer = current_buffer[0..-1]
     new_hash.each do |prop|
       if prop[1].is_a? (Hash)
         current_buffer << prop[0]
-        new_titles = parse_hash_titles(new_titles,current_buffer,prop[1])
-        current_buffer = starting_buffer
+        new_titles = parse_hash_titles(new_titles,current_buffer,previous_buffer,prop[1])
       else
         unless prop[1].nil?
+          # important to prevent inappropriate buffer chaining
+          current_buffer = previous_buffer
           new_titles << [current_buffer,prop[0]].join('.')
         end
       end
@@ -217,7 +214,6 @@ class EventbriteScrape
 
   #rest api-calling method; returns api response as a json object
   def get_json(url)
-    puts url
     begin
       @response = RestClient.get url
       while @response.nil? do
@@ -227,7 +223,6 @@ class EventbriteScrape
       end
     rescue => e
     end
-    puts @response.code
     @json_file = JSON.parse(@response)
   end
 
@@ -277,6 +272,9 @@ class EventbriteScrape
 
   # initiate API authentication and return hash of auth values
   def get_rest_authentication()
+    sf_oauth_prefix = ENV['sf_oauth_prefix']
+    sf_oauth_endpoint = "#{sf_oauth_prefix}/services/oauth2/authorize"
+    oauth_token_endpoint = "#{sf_oauth_prefix}/services/oauth2/token"
     client_id = ENV['sf_client_id']
     client_secret = ENV['sf_client_secret']
     username = ENV['sf_username']
@@ -285,13 +283,11 @@ class EventbriteScrape
       "&client_secret=#{client_secret}" \
       "&username=#{username}&password=#{password}"
     params = {:accept => 'application/json'}
-    @auth_response = RestClient.post $oauth_token_endpoint, auth_payload, params
+    @auth_response = RestClient.post oauth_token_endpoint, auth_payload, params
     auth_json = JSON.parse(@auth_response)
     auth_vals = {"access_token" => auth_json["access_token"],
       "instance_url" => auth_json["instance_url"]}
   end
-
-  # method: search_campaign_or_contact(
 
   # test method for experimenting with Salesforce & Eventbrite REST API Calls
   def push_data_to_salesforce(object_type,data,auth_vals)
@@ -315,8 +311,12 @@ class EventbriteScrape
           json_response = JSON.parse(query_response)[0]
           response_id = json_response["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          response =
-            rest_call("patch",base_uri,json_payload,access_token)
+          # prevent  events from getting patched
+          chapter = JSON.parse(json_payload)["Chapter__c"]
+          unless chapter == "INSERT CHAPTER HERE" && object_type == "Campaign"
+            response =
+              rest_call("patch",base_uri,json_payload,access_token)
+          end
         end
       else
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
@@ -328,6 +328,16 @@ class EventbriteScrape
   # encode a string for use in rest call
   def url_encode(string)
     string = CGI.escape string
+  end
+
+  def remove_non_ascii(string)
+    encoding_options = {
+    :invalid           => :replace,  # Replace invalid byte sequences
+    :undef             => :replace,  # Replace anything not defined in ASCII
+    :replace           => '',        # Use a blank for those replacements
+    :universal_newline => true       # Always break lines with \n
+    }
+    non_ascii_string.encode(Encoding.find('ASCII'), encoding_options)
   end
 
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
@@ -404,6 +414,7 @@ class EventbriteScrape
           " AND #{contact_email}}" \
           " IN ALL FIELDS" \
           " RETURNING #{object_type}(Id)")
+    puts search_string
     when object_type == "CampaignMember"
       contact_id = obj["ContactId"]
       campaign_id = obj["CampaignId"]
@@ -418,7 +429,8 @@ class EventbriteScrape
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
-    # return query_response
+    puts query_response
+    return query_response
   end
 
   # method for calling rest api
@@ -452,7 +464,6 @@ class EventbriteScrape
   # method for handling HTTP-POST calls
   def rest_post(base_uri,json_payload,params)
     begin
-      puts base_uri,json_payload
       @response = RestClient.post(base_uri,json_payload,params)
     rescue => e
       puts @response.code
