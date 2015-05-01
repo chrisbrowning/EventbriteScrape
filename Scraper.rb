@@ -1,11 +1,12 @@
 require 'rubygems'
 require 'bundler/setup'
+require './Searcher.rb'
+require './REST.rb'
 require 'json' # for parsing and building api response data
 require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
 require 'rest-client'  # framework for calling APIs
-require 'cgi'  # handles URL encoding for SF rest API calls
 
-class Scrape
+class Scraper
 
   def scrape_eventbrite(type_to_scrape, arr_to_scrape)
     #json_arr   -> used to store all json objects from api responses
@@ -145,15 +146,6 @@ class Scrape
       endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
     when "venue"
       endpoint = "#{prefix}/venues/#{obj}/?token=#{token}"
-    end
-  end
-
-  # validate date formats: YYYY-MM-DD
-  def validate_dates(dates)
-    date_format = /(2009|201[0-5])-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])/
-    dates.each do |d|
-      date_format.match(d).nil? \
-      ? false : true
     end
   end
 
@@ -303,48 +295,35 @@ class Scrape
           json_response = JSON.parse(query_response)
           response_id = json_response["records"][0]["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          response =
+          puts "#{object_type} found. Patching..."
+          @response =
             rest_call("patch",base_uri,json_payload,access_token)
         else
           json_response = JSON.parse(query_response)[0]
+          puts "#{object_type} found..."
+          puts query_response
+          puts json_response
           response_id = json_response["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
           chapter = JSON.parse(json_payload)["Chapter__c"]
-          unless chapter == "INSERT CHAPTER HERE" && object_type == "Campaign"
-            response =
+          unless chapter == "AFP Foundation Bridge Program"
+            puts "Patching..."
+            puts response_id, json_payload if object_type == "Contact"
+            @response =
               rest_call("patch",base_uri,json_payload,access_token)
+          else
+            puts "Campaign is Bridge. Not gonna do anything"
           end
         end
       else
+        puts "#{object_type} not found. Posting...."
+        puts json_payload
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
-        response = rest_call("post",base_uri,json_payload,access_token)
+        @response = rest_call("post",base_uri,json_payload,access_token)
+        puts @response
       end
     end
-  end
-
-  # encode a string for use in rest call
-  def url_encode(string)
-    string = CGI.escape string
-  end
-
-  def remove_non_ascii(string)
-    encoding_options = {
-    :invalid           => :replace,  # Replace invalid byte sequences
-    :undef             => :replace,  # Replace anything not defined in ASCII
-    :replace           => '',        # Use a blank for those replacements
-    :universal_newline => true       # Always break lines with \n
-    }
-    non_ascii_string.encode(Encoding.find('ASCII'), encoding_options)
-  end
-
-  # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
-  # when refactoring -- make sure not to use gsub! as it may alter the original API data
-  def escape_characters(string)
-    ['&','-','?','|','!',"'",'+'].each do |syn_char|
-      string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
-    end
-    return string
   end
 
   # adds Campaign and Contact Id info to CampaignMember payload before processing
@@ -359,12 +338,12 @@ class Scrape
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
-      url_encode(
+      Formatter.new.url_encode(
         "FIND {#{campaign_id}}" \
         " IN ALL FIELDS" \
         " RETURNING Campaign(Id)")
     contact_search_string =
-      url_encode(
+      Formatter.new.url_encode(
       "FIND {#{contact_fn}" \
       " AND #{contact_ln}" \
       " AND #{contact_email}}" \
@@ -391,44 +370,11 @@ class Scrape
   # search salesforce for Eventbrite data
   def search_salesforce(object_type,obj,instance_url,access_token)
     type = "search"
-    case
-    when object_type == "Campaign"
-      campaign_id = obj["id"]
-      search_string =
-        url_encode(
-          "FIND {#{campaign_id}}" \
-          " IN ALL FIELDS" \
-          " RETURNING #{object_type}(Id)")
-    when object_type == "Contact"
-      contact_fn = escape_characters(obj["profile"]["first_name"])
-      contact_ln = escape_characters(obj["profile"]["last_name"])
-      contact_email =  obj["profile"]["email"]
-      contact_email = obj["order"]["email"] if contact_email.nil?
-      contact_email = escape_characters(contact_email)
-      search_string =
-        url_encode(
-          "FIND {#{contact_fn}" \
-          " AND #{contact_ln}" \
-          " AND #{contact_email}}" \
-          " IN ALL FIELDS" \
-          " RETURNING #{object_type}(Id)")
+    search_string = Searcher.new.search(object_type,obj)
     puts search_string
-    when object_type == "CampaignMember"
-      contact_id = obj["ContactId"]
-      campaign_id = obj["CampaignId"]
-      type = "query"
-      search_string =
-        url_encode(
-          "SELECT Id" \
-          " FROM CampaignMember" \
-          " WHERE CampaignId='#{campaign_id}'" \
-          " AND ContactId='#{contact_id}'")
-    end
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
-    puts query_response
-    return query_response
   end
 
   # method for calling rest api
@@ -440,42 +386,11 @@ class Scrape
       :verify => false}
     case call
     when "get"
-      response = rest_get(base_uri,params)
+      @response = REST.new.rest_get(base_uri,params)
     when "post"
-      response = rest_post(base_uri,json_payload,params)
+      @response = REST.new.rest_post(base_uri,json_payload,params)
     when "patch"
-      response = rest_patch(base_uri,json_payload,params)
-    end
-    return response
-  end
-
-  # method for handling HTTP-GET calls
-  def rest_get(base_uri,params)
-    begin
-      @response = RestClient.get(base_uri,params)
-    rescue => e
-      puts @response.code
-    end
-    return @response
-  end
-
-  # method for handling HTTP-POST calls
-  def rest_post(base_uri,json_payload,params)
-    begin
-      @response = RestClient.post(base_uri,json_payload,params)
-    rescue => e
-      puts @response.code
-    end
-    return @response
-  end
-
-  # method for handling HTTP-PATCH calls
-  # also, enforces "patch-only if field is empty" rule
-  def rest_patch(base_uri,json_payload,params)
-    begin
-      @response = RestClient.patch(base_uri,json_payload,params)
-    rescue => e
-      puts @response.code
+      @response = REST.new.rest_patch(base_uri,json_payload,params)
     end
     return @response
   end
@@ -486,7 +401,7 @@ class Scrape
     csv.each do |row|
       payload.store(row.first,get_nested_val(row.last.split('.'),obj))
     end
+    puts "built payload = #{payload}"
     return payload
   end
-
 end

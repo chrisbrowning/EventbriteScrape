@@ -1,4 +1,5 @@
 require './Scraper.rb'
+require './Formatter.rb'
 require 'rubygems'
 require 'bundler/setup'
 require 'figaro'
@@ -42,7 +43,7 @@ end.parse!
 
   if !options[:datescrape].nil? && !options[:salesforcepush]
     #check valid date format; if invalid, complain, and die.
-    valid_date_format = Scraper.new.validate_dates(options[:datescrape])
+    valid_date_format = Formatter.new.validate_dates(options[:datescrape])
     if !valid_date_format
       abort("Invalid date format. Try yyyy-mm-dd.")
     end
@@ -56,7 +57,7 @@ end.parse!
 
   if !options[:datescrape].nil? && options[:salesforcepush]
     #check valid date format; if invalid, complain, and die.
-    valid_date_format = Scraper.new.validate_dates(options[:datescrape])
+    valid_date_format = Formatter.new.validate_dates(options[:datescrape])
     if !valid_date_format
       abort("Invalid date format. Try yyyy-mm-dd.")
     end
