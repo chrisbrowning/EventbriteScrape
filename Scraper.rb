@@ -296,32 +296,23 @@ class Scraper
           response_id = json_response["records"][0]["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           puts "#{object_type} found. Patching..."
-          @response =
+          response =
             rest_call("patch",base_uri,json_payload,access_token)
         else
           json_response = JSON.parse(query_response)[0]
           puts "#{object_type} found..."
-          puts query_response
-          puts json_response
           response_id = json_response["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
           chapter = JSON.parse(json_payload)["Chapter__c"]
-          unless chapter == "AFP Foundation Bridge Program"
-            puts "Patching..."
-            puts response_id, json_payload if object_type == "Contact"
-            @response =
+          unless chapter == ENV['bad_chap']
+            response =
               rest_call("patch",base_uri,json_payload,access_token)
-          else
-            puts "Campaign is Bridge. Not gonna do anything"
           end
         end
       else
-        puts "#{object_type} not found. Posting...."
-        puts json_payload
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
-        @response = rest_call("post",base_uri,json_payload,access_token)
-        puts @response
+        response = rest_call("post",base_uri,json_payload,access_token)
       end
     end
   end
@@ -331,10 +322,10 @@ class Scraper
     json_payload = nil
     campaign_id = obj["event"]["id"]
     contact_email = obj["profile"]["email"]
-    contact_fn = escape_characters(obj["profile"]["first_name"])
-    contact_ln = escape_characters(obj["profile"]["last_name"])
+    contact_fn = Formatter.new.escape_characters(obj["profile"]["first_name"])
+    contact_ln = Formatter.new.escape_characters(obj["profile"]["last_name"])
     contact_email = obj["order"]["email"] if contact_email.nil?
-    contact_email = escape_characters(contact_email)
+    contact_email = Formatter.new.escape_characters(contact_email)
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
@@ -369,10 +360,12 @@ class Scraper
 
   # search salesforce for Eventbrite data
   def search_salesforce(object_type,obj,instance_url,access_token)
-    type = "search"
+    type =
+      object_type == "CampaignMember" ? "query" : "search"
     search_string = Searcher.new.search(object_type,obj)
-    puts search_string
+    search_string = Formatter.new.url_encode(search_string)
     base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
+    # searches should carry empty payloads
     json_payload = nil
     query_response = rest_call("get",base_uri,json_payload,access_token)
   end
@@ -384,15 +377,10 @@ class Scraper
       :content_type => 'application/json',
       :accept => 'application/json',
       :verify => false}
-    case call
-    when "get"
-      @response = REST.new.rest_get(base_uri,params)
-    when "post"
-      @response = REST.new.rest_post(base_uri,json_payload,params)
-    when "patch"
-      @response = REST.new.rest_patch(base_uri,json_payload,params)
-    end
-    return @response
+    response = REST.new.rest_get(base_uri,params) if call == "get"
+    response = REST.new.rest_post(base_uri,json_payload,params) if call == "post"
+    response = REST.new.rest_patch(base_uri,json_payload,params) if call == "patch"
+    return response
   end
 
   # reads csv and generates a hash payload for API calls
@@ -401,7 +389,6 @@ class Scraper
     csv.each do |row|
       payload.store(row.first,get_nested_val(row.last.split('.'),obj))
     end
-    puts "built payload = #{payload}"
     return payload
   end
 end

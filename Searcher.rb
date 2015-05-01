@@ -1,21 +1,14 @@
 require 'rubygems'
 require 'bundler/setup'
-require './Formatter.rb/escape_characters'
+require './Formatter.rb'
 
 class Searcher
 
   def search(object_type,obj)
-    case object_type
-    when "Campaign"
-      @search_string = campaign(obj)
-    when "Contact"
-      @search_string = contact(obj)
-    when "CampaignMember"
-      @search_string = campaignmember(obj)
-      type = "query"
-    end
-    puts @search_string
-    return @search_string
+      search_string = campaign(obj) if object_type == "Campaign"
+      search_string = contact(obj)  if object_type == "Contact"
+      search_string = campaignmember(obj) if object_type == "CampaignMember"
+      return search_string
   end
 
   def campaign(obj)
@@ -26,12 +19,14 @@ class Searcher
         " RETURNING Campaign(Id)"
   end
 
-  def contact
-    contact_fn = escape_characters(obj["profile"]["first_name"])
-    contact_ln = escape_characters(obj["profile"]["last_name"])
-    contact_email =  obj["profile"]["email"]
+  def contact(obj)
+    contact_fn = obj["profile"]["first_name"]
+    contact_ln = obj["profile"]["last_name"]
+    contact_email = obj["profile"]["email"]
     contact_email = obj["order"]["email"] if contact_email.nil?
-    contact_email = Formatter.new.escape_characters(contact_email)
+    [contact_fn,contact_ln,contact_email].each do |field|
+      field = Formatter.new.escape_characters(field)
+    end
     search_string =
         "FIND {\"#{contact_fn}" \
         " #{contact_ln}\"" \
@@ -40,10 +35,9 @@ class Searcher
         " RETURNING Contact(Id)"
   end
 
-  def campaignmember
+  def campaignmember(obj)
     contact_id = obj["ContactId"]
     campaign_id = obj["CampaignId"]
-    type = "query"
     search_string =
         "SELECT Id" \
         " FROM CampaignMember" \
