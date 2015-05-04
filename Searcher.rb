@@ -17,9 +17,9 @@ class Searcher
   def campaign(obj)
     campaign_id = obj["id"]
     search_string =
-        "FIND {#{campaign_id}}" \
-        " IN ALL FIELDS" \
-        " RETURNING Campaign(Id)"
+        "SELECT Id" \
+        " FROM Campaign" \
+        " WHERE External_ID__c='#{campaign_id}'"
   end
 
   def contact(obj)
@@ -31,9 +31,12 @@ class Searcher
       field = Formatter.escape_characters(field)
     end
     search_string =
-      "FIND \{\"#{contact_email}\"\}" \
-      " IN EMAIL FIELDS" \
-      " RETURNING Contact(Id)"
+      "SELECT Id" \
+      " FROM Contact" \
+      " WHERE FirstName = '#{contact_fn}'" \
+      " AND LastName = '#{contact_ln}'" \
+      " AND (npe01__HomeEmail__c =  '#{contact_email}'" \
+      " OR npe01__AlternateEmail__c = '#{contact_email}')"
     return search_string
   end
 

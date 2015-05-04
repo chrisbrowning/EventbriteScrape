@@ -50,11 +50,9 @@ module Salesforce
 
   # search salesforce for Eventbrite data
   def Salesforce.search_salesforce(object_type,obj,instance_url,access_token)
-    type =
-      object_type == "CampaignMember" ? "query" : "search"
     search_string = Searcher.new.search(object_type,obj)
     search_string = Formatter.url_encode(search_string)
-    base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
+    base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{search_string}"
     puts base_uri
     query_response = REST.get(base_uri,access_token)
   end
@@ -70,7 +68,7 @@ module Salesforce
       query_response = Salesforce.search_salesforce(object_type,obj,instance_url,access_token)
       puts query_response
       # rest api call parameters
-      unless query_response == "[]" || query_response == '{"totalSize":0,"done":true,"records":[]}'
+      unless query_response == '{"totalSize":0,"done":true,"records":[]}'
         if object_type == "CampaignMember"
           json_payload = Salesforce.get_json_payload("CampaignMemberPatch",obj)
           json_response = JSON.parse(query_response)
@@ -78,8 +76,8 @@ module Salesforce
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           puts REST.patch(base_uri,json_payload,access_token)
         else
-          json_response = JSON.parse(query_response)[0]
-          response_id = json_response["Id"]
+          json_response = JSON.parse(query_response)
+          response_id = json_response["records"][0]["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
           chapter = JSON.parse(json_payload)["Chapter__c"] if object_type == "CampaignMember"
@@ -130,24 +128,31 @@ module Salesforce
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
-      Formatter.url_encode("FIND \{#{campaign_id}}" \
-        " IN ALL FIELDS" \
-        " RETURNING Campaign(Id)")
+      Formatter.url_encode(
+        "SELECT Id" \
+        " FROM Campaign" \
+        " WHERE External_ID__c = '#{campaign_id}'")
     contact_search_string =
-      Formatter.url_encode("FIND \{\"#{contact_fn}\" and \"#{contact_ln}\" and \"#{contact_email}\"\}" \
-      " IN ALL FIELDS" \
-      " RETURNING Contact(Id)")
-    campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
-    begin
-      campaign_query_response = REST.get(campaign_base_uri,access_token)
-      @json_campaign = JSON.parse(campaign_query_response)[0]
-    end until !@json_campaign.nil?
-    contact_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}"
+      Formatter.url_encode(
+      "SELECT Id" \
+      " FROM Contact" \
+      " WHERE FirstName = '#{contact_fn}'" \
+      " AND LastName = '#{contact_ln}'" \
+      " AND (npe01__HomeEmail__c = '#{contact_email}'" \
+      " OR npe01__AlternateEmail__c = '#{contact_email}')")
+    campaign_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{campaign_search_string}"
+    puts campaign_base_uri
+    campaign_query_response = REST.get(campaign_base_uri,access_token)
+    puts "add_ids campaign_query_response = #{campaign_query_response}"
+    json_campaign = JSON.parse(campaign_query_response)
+    puts json_campaign["records"][0]["Id"]
+    contact_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{contact_search_string}"
     contact_query_response = REST.get(contact_base_uri,access_token)
-    json_contact = JSON.parse(contact_query_response)[0]
+    json_contact = JSON.parse(contact_query_response)
+    puts json_contact["records"][0]["Id"]
     unless json_contact.nil?
-      obj.store("ContactId",json_contact["Id"])
-      obj.store("CampaignId",@json_campaign["Id"])
+      obj.store("ContactId",json_contact["records"][0]["Id"])
+      obj.store("CampaignId",json_campaign["records"][0]["Id"])
       obj.store("Status",checked_in) unless checked_in.nil?
     else
       obj = nil
