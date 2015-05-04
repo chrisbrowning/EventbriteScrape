@@ -1,5 +1,7 @@
 require './Scraper.rb'
 require './Formatter.rb'
+require './DataWriter.rb'
+require './Salesforce.rb'
 require 'rubygems'
 require 'bundler/setup'
 require 'figaro'
@@ -43,7 +45,7 @@ end.parse!
 
   if !options[:datescrape].nil? && !options[:salesforcepush]
     #check valid date format; if invalid, complain, and die.
-    valid_date_format = Formatter.new.validate_dates(options[:datescrape])
+    valid_date_format = Formatter.validate_dates(options[:datescrape])
     if !valid_date_format
       abort("Invalid date format. Try yyyy-mm-dd.")
     end
@@ -57,7 +59,7 @@ end.parse!
 
   if !options[:datescrape].nil? && options[:salesforcepush]
     #check valid date format; if invalid, complain, and die.
-    valid_date_format = Formatter.new.validate_dates(options[:datescrape])
+    valid_date_format = Formatter.validate_dates(options[:datescrape])
     if !valid_date_format
       abort("Invalid date format. Try yyyy-mm-dd.")
     end
@@ -68,15 +70,15 @@ end.parse!
     event_data = event_data_and_titles[1]
     attendee_data = attendee_data_and_titles[1]
     Scraper.new.all_to_salesforce(event_data,attendee_data)
-    Scraper.new.write_csv("event",event_data_and_titles)
-    Scraper.new.write_csv("attendee",attendee_data_and_titles)
+    DataWriter.write_csv("event",event_data_and_titles)
+    DataWriter.write_csv("attendee",attendee_data_and_titles)
   end
 
   if !options[:eventscrape].nil? && !options[:salesforcepush]
     final_arr = Scraper.new.scrape_eventbrite("event",options[:eventscrape])
     attendee_arr = Scraper.new.scrape_eventbrite("attendee", options[:eventscrape])
-    Scraper.new.write_csv("event",final_arr)
-    Scraper.new.write_csv("attendee",attendee_arr)
+    DataWriter.write_csv("event",final_arr)
+    DataWriter.write_csv("attendee",attendee_arr)
   end
 
   if !options[:eventscrape].nil? && options[:salesforcepush]
@@ -84,14 +86,14 @@ end.parse!
     attendee_data_and_titles = Scraper.new.scrape_eventbrite("attendee", options[:eventscrape])
     event_data = event_data_and_titles[1]
     attendee_data = attendee_data_and_titles[1]
-    Scraper.new.all_to_salesforce(event_data,attendee_data)
-    Scraper.new.write_csv("event",event_data_and_titles)
-    Scraper.new.write_csv("attendee",attendee_data_and_titles)
+    Salesforce.all_to_salesforce(event_data,attendee_data)
+    DataWriter.write_csv("event",event_data_and_titles)
+    DataWriter.write_csv("attendee",attendee_data_and_titles)
   end
 
   if options[:venuescrape]
     puts "Venue scrape is still under construction"
     vid = Scraper.new.get_vid()
     venue_data = Scraper.new.scrape_eventbrite("venue",vid)
-    Scraper.new.write_csv("venue",venue_data)
+    DataWriter.write_csv("venue",venue_data)
   end

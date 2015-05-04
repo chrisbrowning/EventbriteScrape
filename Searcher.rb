@@ -5,10 +5,13 @@ require './Formatter.rb'
 class Searcher
 
   def search(object_type,obj)
-      search_string = campaign(obj) if object_type == "Campaign"
-      search_string = contact(obj)  if object_type == "Contact"
-      search_string = campaignmember(obj) if object_type == "CampaignMember"
-      return search_string
+      if object_type == "Campaign"
+        return campaign(obj)
+      elsif object_type == "Contact"
+        return contact(obj)
+      elsif object_type == "CampaignMember"
+        return campaignmember(obj)
+      end
   end
 
   def campaign(obj)
@@ -25,7 +28,7 @@ class Searcher
     contact_email = obj["profile"]["email"]
     contact_email = obj["order"]["email"] if contact_email.nil?
     [contact_fn,contact_ln,contact_email].each do |field|
-      field = Formatter.new.escape_characters(field)
+      field = Formatter.escape_characters(field)
     end
     search_string =
         "FIND {\"#{contact_fn}" \

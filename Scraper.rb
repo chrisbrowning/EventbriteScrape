@@ -1,10 +1,10 @@
 require 'rubygems'
 require 'bundler/setup'
-require './Searcher.rb'
 require './REST.rb'
+require './Formatter.rb'
+require './Salesforce.rb'
 require 'json' # for parsing and building api response data
 require 'csv'  # for parsing locally-stored authentication data and exporting Eventbrite data
-require 'rest-client'  # framework for calling APIs
 
 class Scraper
 
@@ -90,62 +90,24 @@ class Scraper
     return new_titles
   end
 
-  # writes CSV from json document using titles
-  def write_csv(type, final_arr)
-    csv_data = CSV.generate do |csv|
-      val = []
-      final_arr[0][0].each do |title|
-        val << title
-      end
-      csv << val
-      final_arr[1].each do |elem|
-        elem.each do |doc|
-          data = []
-          json_doc = JSON.generate(doc)
-          json_doc = JSON.parse(json_doc)
-          final_arr[0][0].each do |key|
-            key_array = key.split('.')
-            data << get_nested_val(key_array,json_doc)
-          end
-          csv << data
-        end
-      end
-    end
-    File.write("data_dump/#{type}_details.csv",csv_data)
-  end
-
-  def get_nested_val(key_array,json_doc)
-    current_doc = json_doc
-    key_array.each do |key|
-      unless current_doc[key].nil?
-        current_doc = current_doc[key]
-        @get_val = current_doc
-      else
-        return nil
-      end
-    end
-    return @get_val
-  end
-
   #given a particular type, returns the correct endpoint for api calls
   def get_api_endpoint(type_to_scrape, obj)
-    token = ENV['eventbrite_api_key']
     organizer_id = ENV["eventbrite_organizer_id"]
     prefix = "https://www.eventbriteapi.com/v3"
     case type_to_scrape
     when "eid"
-      endpoint = "#{prefix}/users/#{organizer_id}/owned_events/" \
-        "?order_by=start_desc&token=#{token}"
+      return "#{prefix}/users/#{organizer_id}/owned_events/" \
+        "?order_by=start_desc"
     when "event"
-      endpoint = "#{prefix}/events/#{obj}/?token=#{token}"
+      return "#{prefix}/events/#{obj}/"
     when "attendee"
-      endpoint = "#{prefix}/events/#{obj}/attendees/?token=#{token}&expand=" \
+      return "#{prefix}/events/#{obj}/attendees/?&expand=" \
         "category,attendees,subcategory,format,venue,event" \
         ",ticket_classes,organizer,order,promotional_code"
     when "vid"
-      endpoint = "#{prefix}/users/#{organizer_id}/venues/?token=#{token}"
+      return "#{prefix}/users/#{organizer_id}/venues/"
     when "venue"
-      endpoint = "#{prefix}/venues/#{obj}/?token=#{token}"
+      return "#{prefix}/venues/#{obj}/"
     end
   end
 
@@ -204,191 +166,8 @@ class Scraper
 
   #rest api-calling method; returns api response as a json object
   def get_json(url)
-    begin
-      @response = RestClient.get url
-      while @response.nil? do
-        if @response.code == 200
-          @response = RestClient.get url
-        end
-      end
-    rescue => e
-    end
-    @json_file = JSON.parse(@response)
+    response = REST.get url,ENV['eventbrite_api_key']
+    json_file = JSON.parse(response)
   end
 
-  # process all eventbrite data (events & attendees) into Salesforce
-  def all_to_salesforce(event_data,attendee_data)
-    auth_vals = get_rest_authentication()
-    campaign_id = campaigns_to_salesforce(event_data,auth_vals)
-    contact_ids = contacts_to_salesforce(attendee_data,auth_vals)
-    campaignmember_ids = campaignmembers_to_salesforce(attendee_data,auth_vals)
-  end
-
-  def campaigns_to_salesforce(data,auth_vals)
-    push_data_to_salesforce("Campaign",data,auth_vals)
-  end
-
-  def contacts_to_salesforce(data,auth_vals)
-    push_data_to_salesforce("Contact",data,auth_vals)
-  end
-
-  def campaignmembers_to_salesforce(data,auth_vals)
-    push_data_to_salesforce("CampaignMember",data,auth_vals)
-  end
-
-  # potential method for handling some of the start-up functions in each of the
-  # x_to_salesforce methods
-  def get_json_payload(object_type,obj)
-    case
-    when object_type == "Campaign"
-      csv = CSV.read('data/campaign_fields.csv')
-    when object_type == "Contact"
-      csv = CSV.read('data/contact_fields.csv')
-    when object_type == "CampaignMember"
-      csv = CSV.read('data/campaignmember_fields.csv')
-    when object_type == "CampaignMemberPatch"
-      csv = CSV.read("data/campaignmemberpatch_fields.csv")
-    end
-    payload = build_payload_from_csv(csv,obj)
-    # Short-term solution to excessive titles and incorrect titles
-    if object_type == "Campaign"
-      payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
-    elsif object_type == "Contact"
-      payload["Email"] = obj["order"]["email"] if obj["profile"]["email"].nil?
-      payload["Email"] = payload["Email"].gsub(',','')
-    end
-    json_payload = JSON.generate(payload)
-  end
-
-  # initiate API authentication and return hash of auth values
-  def get_rest_authentication()
-    sf_oauth_prefix = ENV['sf_oauth_prefix']
-    sf_oauth_endpoint = "#{sf_oauth_prefix}/services/oauth2/authorize"
-    oauth_token_endpoint = "#{sf_oauth_prefix}/services/oauth2/token"
-    client_id = ENV['sf_client_id']
-    client_secret = ENV['sf_client_secret']
-    username = ENV['sf_username']
-    password = ENV['sf_password']
-    auth_payload = "grant_type=password&client_id=#{client_id}" \
-      "&client_secret=#{client_secret}" \
-      "&username=#{username}&password=#{password}"
-    params = {:accept => 'application/json'}
-    @auth_response = RestClient.post oauth_token_endpoint, auth_payload, params
-    auth_json = JSON.parse(@auth_response)
-    auth_vals = {"access_token" => auth_json["access_token"],
-      "instance_url" => auth_json["instance_url"]}
-  end
-
-  # test method for experimenting with Salesforce & Eventbrite REST API Calls
-  def push_data_to_salesforce(object_type,data,auth_vals)
-    instance_url = auth_vals["instance_url"]
-    access_token = auth_vals["access_token"]
-    data[0].each do |obj|
-      obj = add_ids_to_campaignmember(obj,instance_url,access_token) if object_type == "CampaignMember"
-      next if obj.nil?
-      json_payload = get_json_payload(object_type,obj)
-      query_response = search_salesforce(object_type,obj,instance_url,access_token)
-      # rest api call parameters
-      unless query_response == "[]" || query_response == '{"totalSize":0,"done":true,"records":[]}'
-        if object_type == "CampaignMember"
-          json_payload = get_json_payload("CampaignMemberPatch",obj)
-          json_response = JSON.parse(query_response)
-          response_id = json_response["records"][0]["Id"]
-          base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          puts "#{object_type} found. Patching..."
-          response =
-            rest_call("patch",base_uri,json_payload,access_token)
-        else
-          json_response = JSON.parse(query_response)[0]
-          puts "#{object_type} found..."
-          response_id = json_response["Id"]
-          base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          # prevent events from getting patched
-          chapter = JSON.parse(json_payload)["Chapter__c"]
-          unless chapter == ENV['bad_chap']
-            response =
-              rest_call("patch",base_uri,json_payload,access_token)
-          end
-        end
-      else
-        base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
-        response = rest_call("post",base_uri,json_payload,access_token)
-      end
-    end
-  end
-
-  # adds Campaign and Contact Id info to CampaignMember payload before processing
-  def add_ids_to_campaignmember(obj,instance_url,access_token)
-    json_payload = nil
-    campaign_id = obj["event"]["id"]
-    contact_email = obj["profile"]["email"]
-    contact_fn = Formatter.new.escape_characters(obj["profile"]["first_name"])
-    contact_ln = Formatter.new.escape_characters(obj["profile"]["last_name"])
-    contact_email = obj["order"]["email"] if contact_email.nil?
-    contact_email = Formatter.new.escape_characters(contact_email)
-    checked_in = nil
-    checked_in = "Responded" if obj["checked_in"]
-    campaign_search_string =
-      Formatter.new.url_encode(
-        "FIND {#{campaign_id}}" \
-        " IN ALL FIELDS" \
-        " RETURNING Campaign(Id)")
-    contact_search_string =
-      Formatter.new.url_encode(
-      "FIND {#{contact_fn}" \
-      " AND #{contact_ln}" \
-      " AND #{contact_email}}" \
-      " IN ALL FIELDS" \
-      " RETURNING Contact(Id)")
-    campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"
-    begin
-      campaign_query_response = rest_call("get",campaign_base_uri,json_payload,access_token)
-      @json_campaign = JSON.parse(campaign_query_response)[0]
-    end until !@json_campaign.nil?
-    contact_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{contact_search_string}"
-    contact_query_response = rest_call("get",contact_base_uri,json_payload,access_token)
-    json_contact = JSON.parse(contact_query_response)[0]
-    unless json_contact.nil?
-      obj.store("ContactId",json_contact["Id"])
-      obj.store("CampaignId",@json_campaign["Id"])
-      obj.store("Status",checked_in) unless checked_in.nil?
-    else
-      obj = nil
-    end
-    return obj
-  end
-
-  # search salesforce for Eventbrite data
-  def search_salesforce(object_type,obj,instance_url,access_token)
-    type =
-      object_type == "CampaignMember" ? "query" : "search"
-    search_string = Searcher.new.search(object_type,obj)
-    search_string = Formatter.new.url_encode(search_string)
-    base_uri = "#{instance_url}/services/data/v29.0/#{type}/?q=#{search_string}"
-    # searches should carry empty payloads
-    json_payload = nil
-    query_response = rest_call("get",base_uri,json_payload,access_token)
-  end
-
-  # method for calling rest api
-  def rest_call(call,base_uri,json_payload,access_token)
-    params =
-      {"Authorization" => "Bearer #{access_token}",
-      :content_type => 'application/json',
-      :accept => 'application/json',
-      :verify => false}
-    response = REST.new.rest_get(base_uri,params) if call == "get"
-    response = REST.new.rest_post(base_uri,json_payload,params) if call == "post"
-    response = REST.new.rest_patch(base_uri,json_payload,params) if call == "patch"
-    return response
-  end
-
-  # reads csv and generates a hash payload for API calls
-  def build_payload_from_csv(csv, obj)
-    payload = {}
-    csv.each do |row|
-      payload.store(row.first,get_nested_val(row.last.split('.'),obj))
-    end
-    return payload
-  end
 end
