@@ -68,6 +68,7 @@ module Salesforce
       next if obj.nil?
       json_payload = Salesforce.get_json_payload(object_type,obj)
       query_response = Salesforce.search_salesforce(object_type,obj,instance_url,access_token)
+      puts query_response
       # rest api call parameters
       unless query_response == "[]" || query_response == '{"totalSize":0,"done":true,"records":[]}'
         if object_type == "CampaignMember"
@@ -75,23 +76,20 @@ module Salesforce
           json_response = JSON.parse(query_response)
           response_id = json_response["records"][0]["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          response =
-            REST.patch(base_uri,json_payload,access_token)
+          puts REST.patch(base_uri,json_payload,access_token)
         else
-          puts query_response
           json_response = JSON.parse(query_response)[0]
           response_id = json_response["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
-          chapter = JSON.parse(json_payload)["Chapter__c"]
+          chapter = JSON.parse(json_payload)["Chapter__c"] if object_type == "CampaignMember"
           unless chapter == ENV['bad_chap']
-            response =
-              REST.patch(base_uri,json_payload,access_token)
+            puts REST.patch(base_uri,json_payload,access_token)
           end
         end
       else
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
-        response = REST.post(base_uri,json_payload,access_token)
+        puts REST.post(base_uri,json_payload,access_token)
       end
     end
   end
@@ -132,15 +130,11 @@ module Salesforce
     checked_in = nil
     checked_in = "Responded" if obj["checked_in"]
     campaign_search_string =
-      Formatter.url_encode(
-        "FIND {#{campaign_id}}" \
+      Formatter.url_encode("FIND \{#{campaign_id}}" \
         " IN ALL FIELDS" \
         " RETURNING Campaign(Id)")
     contact_search_string =
-      Formatter.url_encode(
-      "FIND {#{contact_fn}" \
-      " AND #{contact_ln}" \
-      " AND #{contact_email}}" \
+      Formatter.url_encode("FIND \{\"#{contact_fn}\" and \"#{contact_ln}\" and \"#{contact_email}\"\}" \
       " IN ALL FIELDS" \
       " RETURNING Contact(Id)")
     campaign_base_uri = "#{instance_url}/services/data/v29.0/search/?q=#{campaign_search_string}"

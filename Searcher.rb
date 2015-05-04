@@ -31,11 +31,10 @@ class Searcher
       field = Formatter.escape_characters(field)
     end
     search_string =
-        "FIND {\"#{contact_fn}" \
-        " #{contact_ln}\"" \
-        " AND #{contact_email}}" \
-        " IN ALL FIELDS" \
-        " RETURNING Contact(Id)"
+      "FIND \{\"#{contact_email}\"\}" \
+      " IN EMAIL FIELDS" \
+      " RETURNING Contact(Id)"
+    return search_string
   end
 
   def campaignmember(obj)
