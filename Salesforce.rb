@@ -8,27 +8,27 @@ require './REST.rb'
 module Salesforce
 
   # process all eventbrite data (events & attendees) into Salesforce
-  def Salesforce.all_to_salesforce(event_data,attendee_data)
+  def self.all_to_salesforce(event_data,attendee_data)
     auth_vals = Salesforce.get_rest_authentication()
     campaign_id = Salesforce.campaigns_to_salesforce(event_data,auth_vals)
     contact_ids = Salesforce.contacts_to_salesforce(attendee_data,auth_vals)
     campaignmember_ids = Salesforce.campaignmembers_to_salesforce(attendee_data,auth_vals)
   end
 
-  def Salesforce.campaigns_to_salesforce(data,auth_vals)
+  def self.campaigns_to_salesforce(data,auth_vals)
     Salesforce.push_data_to_salesforce("Campaign",data,auth_vals)
   end
 
-  def Salesforce.contacts_to_salesforce(data,auth_vals)
+  def self.contacts_to_salesforce(data,auth_vals)
     Salesforce.push_data_to_salesforce("Contact",data,auth_vals)
   end
 
-  def Salesforce.campaignmembers_to_salesforce(data,auth_vals)
+  def self.campaignmembers_to_salesforce(data,auth_vals)
     Salesforce.push_data_to_salesforce("CampaignMember",data,auth_vals)
   end
 
   # initiate API authentication and return hash of auth values
-  def Salesforce.get_rest_authentication()
+  def self.get_rest_authentication()
     # URLs
     sf_oauth_prefix = ENV['sf_oauth_prefix']
     oauth_token_endpoint = "#{sf_oauth_prefix}/services/oauth2/token"
@@ -49,7 +49,7 @@ module Salesforce
   end
 
   # search salesforce for Eventbrite data
-  def Salesforce.search_salesforce(object_type,obj,instance_url,access_token)
+  def self.search_salesforce(object_type,obj,instance_url,access_token)
     search_string = Searcher.new.search(object_type,obj)
     search_string = Formatter.url_encode(search_string)
     base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{search_string}"
@@ -58,7 +58,7 @@ module Salesforce
   end
 
   # test method for experimenting with Salesforce & Eventbrite REST API Calls
-  def Salesforce.push_data_to_salesforce(object_type,data,auth_vals)
+  def self.push_data_to_salesforce(object_type,data,auth_vals)
     instance_url = auth_vals["instance_url"]
     access_token = auth_vals["access_token"]
     data[0].each do |obj|
@@ -80,7 +80,7 @@ module Salesforce
           response_id = json_response["records"][0]["Id"]
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
-          chapter = JSON.parse(json_payload)["Chapter__c"] if object_type == "CampaignMember"
+          chapter = JSON.parse(json_payload)["Chapter__c"] if object_type == "Campaign"
           unless chapter == ENV['bad_chap']
             puts REST.patch(base_uri,json_payload,access_token)
           end
@@ -94,7 +94,7 @@ module Salesforce
 
   # potential method for handling some of the start-up functions in each of the
   # x_to_salesforce methods
-  def Salesforce.get_json_payload(object_type,obj)
+  def self.get_json_payload(object_type,obj)
     case
     when object_type == "Campaign"
       csv = CSV.read('data/campaign_fields.csv')
@@ -117,7 +117,7 @@ module Salesforce
   end
 
   # adds Campaign and Contact Id info to CampaignMember payload before processing
-  def Salesforce.add_ids_to_campaignmember(obj,instance_url,access_token)
+  def self.add_ids_to_campaignmember(obj,instance_url,access_token)
     json_payload = nil
     campaign_id = obj["event"]["id"]
     contact_fn = Formatter.escape_characters(obj["profile"]["first_name"])
@@ -159,5 +159,4 @@ module Salesforce
     end
     return obj
   end
-
 end

@@ -4,7 +4,7 @@ require 'csv'
 module DataWriter
 
     # writes CSV from json document using titles
-    def DataWriter.write_csv(type, final_arr)
+    def self.write_csv(type, final_arr)
       csv_data = CSV.generate do |csv|
         val = []
         final_arr[0][0].each do |title|
@@ -28,7 +28,7 @@ module DataWriter
     end
 
   # reads csv and generates a hash payload for API calls
-  def DataWriter.build_payload_from_csv(csv, obj)
+  def self.build_payload_from_csv(csv, obj)
     payload = {}
     csv.each do |row|
       payload.store(row.first,DataWriter.get_nested_val(row.last.split('.'),obj))
@@ -36,7 +36,7 @@ module DataWriter
     return payload
   end
 
-  def DataWriter.get_nested_val(key_array,json_doc)
+  def self.get_nested_val(key_array,json_doc)
     current_doc = json_doc
     key_array.each do |key|
       unless current_doc[key].nil?

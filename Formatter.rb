@@ -3,7 +3,7 @@ require 'cgi'
 module Formatter
 
 # validate date formats: YYYY-MM-D
-  def Formatter.validate_dates(dates)
+  def self.validate_dates(dates)
     date_format = /(2009|201[0-5])-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])/
     dates.each do |d|
       date_format.match(d).nil? \
@@ -12,11 +12,11 @@ module Formatter
   end
 
   # encode a string for use in rest call
-  def Formatter.url_encode(string)
+  def self.url_encode(string)
     string = CGI.escape string
   end
 
-  def Formatter.remove_non_ascii(string)
+  def self.remove_non_ascii(string)
     encoding_options = {
     :invalid           => :replace,  # Replace invalid byte sequences
     :undef             => :replace,  # Replace anything not defined in ASCII
@@ -28,7 +28,7 @@ module Formatter
 
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
   # when refactoring -- make sure not to use gsub! as it may alter the original API data
-  def Formatter.escape_characters(string)
+  def self.escape_characters(string)
     ['&','-','?','|','!',"'",'+'].each do |syn_char|
       string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
     end

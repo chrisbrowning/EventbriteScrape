@@ -4,7 +4,7 @@ require 'rest-client'
 
 module REST
 
-    def REST.get_params(access_token)
+    def self.get_params(access_token)
       params =
         {"Authorization" => "Bearer #{access_token}",
         :content_type => 'application/json',
@@ -13,7 +13,7 @@ module REST
      end
 
     # method for handling HTTP-GET calls
-    def REST.get(base_uri,access_token)
+    def self.get(base_uri,access_token)
       params = REST.get_params(access_token)
       begin
         @response = RestClient.get(base_uri,params)
@@ -24,7 +24,7 @@ module REST
     end
 
     # method for handling HTTP-POST calls
-    def REST.post(base_uri,json_payload,access_token)
+    def self.post(base_uri,json_payload,access_token)
       params = REST.get_params(access_token)
       begin
         @response = RestClient.post(base_uri,json_payload,params)
@@ -35,7 +35,7 @@ module REST
     end
 
     # method for handling HTTP-PATCH calls
-    def REST.patch(base_uri,json_payload,access_token)
+    def self.patch(base_uri,json_payload,access_token)
       params = REST.get_params(access_token)
       begin
         @response = RestClient.patch(base_uri,json_payload,params)
@@ -45,7 +45,7 @@ module REST
       return @response
     end
 
-    def REST.authenticate_salesforce(base_uri,json_payload,params)
+    def self.authenticate_salesforce(base_uri,json_payload,params)
       begin
         @response = RestClient.post(base_uri,json_payload,params)
       rescue => e
