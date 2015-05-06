@@ -94,17 +94,8 @@ module Salesforce
 
   # potential method for handling some of the start-up functions in each of the
   # x_to_salesforce methods
-  def self.get_json_payload(object_type,obj)
-    case
-    when object_type == "Campaign"
-      csv = CSV.read('data/campaign_fields.csv')
-    when object_type == "Contact"
-      csv = CSV.read('data/contact_fields.csv')
-    when object_type == "CampaignMember"
-      csv = CSV.read('data/campaignmember_fields.csv')
-    when object_type == "CampaignMemberPatch"
-      csv = CSV.read("data/campaignmemberpatch_fields.csv")
-    end
+  def self.get_json_payload(object_type, obj)
+    csv = DataWriter.get_sobject_fields(object_type, obj)
     payload = DataWriter.build_payload_from_csv(csv,obj)
     # Short-term solution to excessive titles and incorrect titles
     if object_type == "Campaign"
@@ -116,8 +107,22 @@ module Salesforce
     json_payload = JSON.generate(payload)
   end
 
+  def self.get_sobject_fields(object_type, obj)
+    case
+    when object_type == "Campaign"
+      @csv = CSV.read('data/campaign_fields.csv')
+    when object_type == "Contact"
+      @csv = CSV.read('data/contact_fields.csv')
+    when object_type == "CampaignMember"
+      @csv = CSV.read('data/campaignmember_fields.csv')
+    when object_type == "CampaignMemberPatch"
+      @csv = CSV.read("data/campaignmemberpatch_fields.csv")
+    end
+    return @csv
+  end
+
   # adds Campaign and Contact Id info to CampaignMember payload before processing
-  def self.add_ids_to_campaignmember(obj,instance_url,access_token)
+  def self.add_ids_to_campaignmember(obj, instance_url, access_token)
     json_payload = nil
     campaign_id = obj["event"]["id"]
     contact_fn = Formatter.escape_characters(obj["profile"]["first_name"])
