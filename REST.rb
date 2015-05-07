@@ -16,6 +16,7 @@ module REST
     def self.get(base_uri,access_token)
       params = REST.get_params(access_token)
       begin
+        puts base_uri
         @response = RestClient.get(base_uri,params)
       rescue => e
         puts @response.code
@@ -46,11 +47,6 @@ module REST
     end
 
     def self.authenticate_salesforce(base_uri,json_payload,params)
-      begin
-        @response = RestClient.post(base_uri,json_payload,params)
-      rescue => e
-        puts @response.code
-      end
-      return @response
+        return RestClient.post(base_uri,json_payload,params)
     end
 end

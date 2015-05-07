@@ -43,6 +43,7 @@ module Salesforce
       "&username=#{username}&password=#{password}"
     params = {:accept => 'application/json'}
     auth_response = REST.authenticate_salesforce(oauth_token_endpoint,auth_payload,params)
+    puts auth_response
     auth_json = JSON.parse(auth_response)
     auth_vals = {"access_token" => auth_json["access_token"],
       "instance_url" => auth_json["instance_url"]}
@@ -53,7 +54,6 @@ module Salesforce
     search_string = Searcher.new.search(object_type,obj)
     search_string = Formatter.url_encode(search_string)
     base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{search_string}"
-    puts base_uri
     query_response = REST.get(base_uri,access_token)
   end
 
@@ -64,10 +64,7 @@ module Salesforce
     data[0].each do |obj|
       obj = add_ids_to_campaignmember(obj,instance_url,access_token) if object_type == "CampaignMember"
       next if obj.nil?
-      json_payload = Salesforce.get_json_payload(object_type,obj)
       query_response = Salesforce.search_salesforce(object_type,obj,instance_url,access_token)
-      puts query_response
-      # rest api call parameters
       unless query_response == '{"totalSize":0,"done":true,"records":[]}'
         if object_type == "CampaignMember"
           json_payload = Salesforce.get_json_payload("CampaignMemberPatch",obj)
@@ -78,14 +75,20 @@ module Salesforce
         else
           json_response = JSON.parse(query_response)
           response_id = json_response["records"][0]["Id"]
+          if object_type == "Campaign"
+            @record_type_id = json_response["records"][0]["RecordTypeId"]
+          end
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
           # prevent events from getting patched
-          chapter = JSON.parse(json_payload)["Chapter__c"] if object_type == "Campaign"
-          unless chapter == ENV['bad_chap']
+          if @record_type_id != ENV['b_record_id']
+            puts REST.patch(base_uri,json_payload,access_token)
+          else
+            json_payload = Salesforce.get_json_payload("ExceptionCampaign",obj)
             puts REST.patch(base_uri,json_payload,access_token)
           end
         end
       else
+        json_payload = Salesforce.get_json_payload(object_type,obj)
         base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/"
         puts REST.post(base_uri,json_payload,access_token)
       end
@@ -95,8 +98,9 @@ module Salesforce
   # potential method for handling some of the start-up functions in each of the
   # x_to_salesforce methods
   def self.get_json_payload(object_type, obj)
-    csv = DataWriter.get_sobject_fields(object_type, obj)
+    csv = Salesforce.get_sobject_fields(object_type, obj)
     payload = DataWriter.build_payload_from_csv(csv,obj)
+    puts "payload = #{payload}"
     # Short-term solution to excessive titles and incorrect titles
     if object_type == "Campaign"
       payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
@@ -111,6 +115,8 @@ module Salesforce
     case
     when object_type == "Campaign"
       @csv = CSV.read('data/campaign_fields.csv')
+    when object_type == "ExceptionCampaign"
+      @csv = CSV.read('data/exceptioncampaign_fields.csv')
     when object_type == "Contact"
       @csv = CSV.read('data/contact_fields.csv')
     when object_type == "CampaignMember"
@@ -130,8 +136,8 @@ module Salesforce
     contact_email = obj["profile"]["email"]
     contact_email = obj["order"]["email"] if contact_email.nil?
     contact_email = Formatter.escape_characters(contact_email)
-    checked_in = nil
-    checked_in = "Responded" if obj["checked_in"]
+    checked_in = "RSVP - Yes"
+    checked_in = "Attended" if obj["checked_in"]
     campaign_search_string =
       Formatter.url_encode(
         "SELECT Id" \
@@ -146,19 +152,15 @@ module Salesforce
       " AND (npe01__HomeEmail__c = '#{contact_email}'" \
       " OR npe01__AlternateEmail__c = '#{contact_email}')")
     campaign_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{campaign_search_string}"
-    puts campaign_base_uri
     campaign_query_response = REST.get(campaign_base_uri,access_token)
-    puts "add_ids campaign_query_response = #{campaign_query_response}"
     json_campaign = JSON.parse(campaign_query_response)
-    puts json_campaign["records"][0]["Id"]
     contact_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{contact_search_string}"
     contact_query_response = REST.get(contact_base_uri,access_token)
     json_contact = JSON.parse(contact_query_response)
-    puts json_contact["records"][0]["Id"]
     unless json_contact.nil?
       obj.store("ContactId",json_contact["records"][0]["Id"])
       obj.store("CampaignId",json_campaign["records"][0]["Id"])
-      obj.store("Status",checked_in) unless checked_in.nil?
+      obj.store("Status",checked_in)
     else
       obj = nil
     end

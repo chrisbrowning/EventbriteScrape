@@ -17,7 +17,7 @@ class Searcher
   def campaign(obj)
     campaign_id = obj["id"]
     search_string =
-        "SELECT Id" \
+        "SELECT Id, RecordTypeId" \
         " FROM Campaign" \
         " WHERE External_ID__c='#{campaign_id}'"
   end

@@ -32,17 +32,20 @@ module DataWriter
     csv.each do |row|
       payload.store(row.first, DataWriter.get_nested_val(row.last.split('.'), obj))
     end
+    return payload
   end
 
   def self.get_nested_val(key_array, json_doc)
     current_doc = json_doc
+    get_val = nil
     key_array.each do |key|
-      if current_doc[key].nil?
+      if current_doc.nil?
         return nil
       else
         current_doc = current_doc[key]
-        @get_val = current_doc
+        get_val = current_doc
       end
     end
+    return get_val
   end
 end
