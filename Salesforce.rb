@@ -131,11 +131,11 @@ module Salesforce
   def self.add_ids_to_campaignmember(obj, instance_url, access_token)
     json_payload = nil
     campaign_id = obj["event"]["id"]
-    contact_fn = Formatter.escape_characters(obj["profile"]["first_name"])
-    contact_ln = Formatter.escape_characters(obj["profile"]["last_name"])
+    contact_fn = Formatter.escape_characters(obj["profile"]["first_name"]).strip
+    contact_ln = Formatter.escape_characters(obj["profile"]["last_name"]).strip
     contact_email = obj["profile"]["email"]
     contact_email = obj["order"]["email"] if contact_email.nil?
-    contact_email = Formatter.escape_characters(contact_email)
+    contact_email = Formatter.escape_characters(contact_email).strip
     checked_in = "RSVP - Yes"
     checked_in = "Attended" if obj["checked_in"]
     campaign_search_string =
@@ -156,10 +156,11 @@ module Salesforce
     json_campaign = JSON.parse(campaign_query_response)
     contact_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{contact_search_string}"
     contact_query_response = REST.get(contact_base_uri,access_token)
+    puts contact_query_response
     json_contact = JSON.parse(contact_query_response)
     unless json_contact.nil?
-      obj.store("ContactId",json_contact["records"][0]["Id"])
-      obj.store("CampaignId",json_campaign["records"][0]["Id"])
+      obj.store("ContactId", json_contact["records"][0]["Id"])
+      obj.store("CampaignId", json_campaign["records"][0]["Id"])
       obj.store("Status",checked_in)
     else
       obj = nil

@@ -28,6 +28,7 @@ class Searcher
     contact_email = obj["profile"]["email"]
     contact_email = obj["order"]["email"] if contact_email.nil?
     [contact_fn,contact_ln,contact_email].each do |field|
+      field = field.strip # remove trailing whitespace
       field = Formatter.escape_characters(field)
     end
     search_string =

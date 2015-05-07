@@ -30,7 +30,9 @@ module DataWriter
   def self.build_payload_from_csv(csv, obj)
     payload = {}
     csv.each do |row|
-      payload.store(row.first, DataWriter.get_nested_val(row.last.split('.'), obj))
+      nested_val = DataWriter.get_nested_val(row.last.split('.'), obj)
+      nested_val = nested_val.strip unless nested_val.nil?
+      payload.store(row.first, nested_val)
     end
     return payload
   end
