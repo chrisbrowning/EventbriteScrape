@@ -29,7 +29,7 @@ module Formatter
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
   # when refactoring -- make sure not to use gsub! as it may alter the original API data
   def self.escape_characters(string)
-    ['&','-','?','|','!',"'",'+'].each do |syn_char|
+    ['&','?','|','!',"'",'+','_'].each do |syn_char|
       string = string.gsub(syn_char,'\\\\' + "#{syn_char}")
     end
     return string

@@ -31,6 +31,7 @@ module DataWriter
     payload = {}
     csv.each do |row|
       nested_val = DataWriter.get_nested_val(row.last.split('.'), obj)
+      nested_val = nested_val.to_s unless nested_val.is_a? (String)
       nested_val = nested_val.strip unless nested_val.nil?
       payload.store(row.first, nested_val)
     end

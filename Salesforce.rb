@@ -79,8 +79,9 @@ module Salesforce
             @record_type_id = json_response["records"][0]["RecordTypeId"]
           end
           base_uri = "#{instance_url}/services/data/v29.0/sobjects/#{object_type}/#{response_id}"
-          # prevent events from getting patched
-          if @record_type_id != ENV['b_record_id']
+          # prevent special events from getting patched
+          if @record_type_id != ENV['b_record_id'] || object_type != "Campaign"
+            json_payload = Salesforce.get_json_payload(object_type,obj)
             puts REST.patch(base_uri,json_payload,access_token)
           else
             json_payload = Salesforce.get_json_payload("ExceptionCampaign",obj)
@@ -105,8 +106,8 @@ module Salesforce
     if object_type == "Campaign"
       payload["Name"] = payload["Name"][0..79] if payload["Name"].length > 80
     elsif object_type == "Contact"
-      payload["Email"] = obj["order"]["email"] if obj["profile"]["email"].nil?
-      payload["Email"] = payload["Email"].gsub(',','')
+      payload["npe01__HomeEmail__c"] = obj["order"]["email"] if obj["profile"]["email"].nil?
+      payload["npe01__HomeEmail__c"] = payload["npe01__HomeEmail__c"].gsub(',','')
     end
     json_payload = JSON.generate(payload)
   end

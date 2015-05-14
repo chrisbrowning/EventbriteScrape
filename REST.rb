@@ -40,6 +40,7 @@ module REST
       params = REST.get_params(access_token)
       begin
         @response = RestClient.patch(base_uri,json_payload,params)
+        puts "PATCH RESPONSE = #{@response}"
       rescue => e
         puts @response.code
       end
