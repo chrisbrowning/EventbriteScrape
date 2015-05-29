@@ -126,8 +126,6 @@ class Scraper
       #pull the pages most and least recent event dates
       least_recent= Date.parse events[0]["start"]["local"]
       most_recent = Date.parse events[-1]["start"]["local"]
-      puts most_recent
-      puts least_recent
       #nil-handling for no stop-date
       stop = most_recent + 1 if stop.nil?
       if start <= least_recent

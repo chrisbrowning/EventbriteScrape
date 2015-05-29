@@ -51,7 +51,6 @@ end.parse!
     end
 
     eid = Scraper.new.get_eid_by_date(options[:datescrape])
-    puts eid
     final_arr = Scraper.new.scrape_eventbrite("event",eid)
     attendee_arr = Scraper.new.scrape_eventbrite("attendee", eid)
     DataWriter.write_csv("event",final_arr)
