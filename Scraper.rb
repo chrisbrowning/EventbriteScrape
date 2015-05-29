@@ -96,8 +96,7 @@ class Scraper
     prefix = "https://www.eventbriteapi.com/v3"
     case type_to_scrape
     when "eid"
-      return "#{prefix}/users/#{organizer_id}/owned_events/" \
-        "?order_by=start_desc"
+      return "#{prefix}/users/#{organizer_id}/owned_events/"
     when "event"
       return "#{prefix}/events/#{obj}/"
     when "attendee"
@@ -122,20 +121,23 @@ class Scraper
     begin
       page_count = json_file["pagination"]["page_count"]
       page_number = json_file["pagination"]["page_number"]
+      last_page = (page_count == page_number)
       events = json_file["events"]
       #pull the pages most and least recent event dates
-      most_recent= Date.parse events[0]["start"]["local"]
-      least_recent = Date.parse events[-1]["start"]["local"]
+      least_recent= Date.parse events[0]["start"]["local"]
+      most_recent = Date.parse events[-1]["start"]["local"]
+      puts most_recent
+      puts least_recent
       #nil-handling for no stop-date
       stop = most_recent + 1 if stop.nil?
-      if stop > least_recent
+      if start <= least_recent
         events.each do |event|
           current = Date.parse event["start"]["local"]
           eid << event["id"] if stop > current && start <= current
         end
       end
-      json_file = turn_page(endpoint + "&page=#{page_number}")
-    end until start > least_recent
+      json_file = turn_page(endpoint + "&page=#{page_number}") unless last_page
+    end until stop < most_recent || last_page
     return eid
   end
 
@@ -166,7 +168,7 @@ class Scraper
 
   #rest api-calling method; returns api response as a json object
   def get_json(url)
-    response = REST.get url,ENV['eventbrite_api_key']
+    response = REST.get url, ENV['eventbrite_api_key']
     json_file = JSON.parse(response)
   end
 

@@ -51,10 +51,11 @@ end.parse!
     end
 
     eid = Scraper.new.get_eid_by_date(options[:datescrape])
+    puts eid
     final_arr = Scraper.new.scrape_eventbrite("event",eid)
     attendee_arr = Scraper.new.scrape_eventbrite("attendee", eid)
-    Scraper.new.write_csv("event",final_arr)
-    Scraper.new.write_csv("attendee",attendee_arr)
+    DataWriter.write_csv("event",final_arr)
+    DataWriter.write_csv("attendee",attendee_arr)
   end
 
   if !options[:datescrape].nil? && options[:salesforcepush]
