@@ -23,7 +23,7 @@ module Formatter
     :replace           => '',        # Use a blank for those replacements
     :universal_newline => true       # Always break lines with \n
     }
-    non_ascii_string.encode(Encoding.find('ASCII'), encoding_options)
+    string.encode(Encoding.find('ASCII'), encoding_options)
   end
 
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes

@@ -128,14 +128,14 @@ class Scraper
       most_recent = Date.parse events[-1]["start"]["local"]
       #nil-handling for no stop-date
       stop = most_recent + 1 if stop.nil?
-      if start <= least_recent
+      if start <= most_recent
         events.each do |event|
           current = Date.parse event["start"]["local"]
-          eid << event["id"] if stop > current && start <= current
+          eid << event["id"] if stop >= current && start <= current
         end
       end
       json_file = turn_page(endpoint + "&page=#{page_number}") unless last_page
-    end until stop < most_recent || last_page
+    end until stop <= most_recent || last_page
     return eid
   end
 

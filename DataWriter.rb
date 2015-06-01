@@ -38,6 +38,7 @@ module DataWriter
     return payload
   end
 
+  # parse the nested values within the JSON doc
   def self.get_nested_val(key_array, json_doc)
     current_doc = json_doc
     get_val = nil
@@ -46,6 +47,7 @@ module DataWriter
         return nil
       else
         current_doc = current_doc[key]
+        current_doc = Formatter.remove_non_ascii(current_doc) if current_doc.is_a? (String)
         get_val = current_doc
       end
     end
