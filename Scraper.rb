@@ -96,7 +96,7 @@ class Scraper
     prefix = "https://www.eventbriteapi.com/v3"
     case type_to_scrape
     when "eid"
-      return "#{prefix}/users/#{organizer_id}/owned_events/"
+      return "#{prefix}/users/#{organizer_id}/owned_events/?"
     when "event"
       return "#{prefix}/events/#{obj}/"
     when "attendee"
