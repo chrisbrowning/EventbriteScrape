@@ -47,7 +47,10 @@ module DataWriter
         return nil
       else
         current_doc = current_doc[key]
-        current_doc = Formatter.remove_non_ascii(current_doc) if current_doc.is_a? (String)
+        if current_doc.is_a? (String)
+          current_doc = Formatter.remove_non_ascii(current_doc)
+          current_doc = Formatter.remove_escape_sequence(current_doc)
+        end
         get_val = current_doc
       end
     end

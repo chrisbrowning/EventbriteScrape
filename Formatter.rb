@@ -26,6 +26,10 @@ module Formatter
     string.encode(Encoding.find('ASCII'), encoding_options)
   end
 
+  def self.remove_escape_sequence(string)
+    new_string = string.gsub("\n","")
+  end
+
   # prevent non-standard characters from being URL-encoded improperly by adding escape-slashes
   # when refactoring -- make sure not to use gsub! as it may alter the original API data
   def self.escape_characters(string)

@@ -58,11 +58,10 @@ class Scraper
   def scrape_titles(json_file)
     new_titles = []
     json_file.each do |prop|
-      previous_buffer = []
-      current_buffer = []
+      @current_buffer = []
       if prop[1].is_a? (Hash)
-        current_buffer << prop[0]
-        new_titles = parse_hash_titles(new_titles,current_buffer,previous_buffer,prop[1])
+        @current_buffer << prop[0]
+        new_titles = parse_hash_titles(new_titles,prop[1])
       else
         unless prop[1].nil?
           new_titles << prop[0]
@@ -73,20 +72,19 @@ class Scraper
   end
 
   #recursive method for parsing multiple levels of JSON document
-  def parse_hash_titles(new_titles,current_buffer,previous_buffer,new_hash)
-    previous_buffer = current_buffer[0..-1]
+  def parse_hash_titles(new_titles,new_hash)
     new_hash.each do |prop|
       if prop[1].is_a? (Hash)
-        current_buffer << prop[0]
-        new_titles = parse_hash_titles(new_titles,current_buffer,previous_buffer,prop[1])
+        @current_buffer << prop[0]
+        new_titles = parse_hash_titles(new_titles,prop[1])
       else
         unless prop[1].nil?
           # important to prevent inappropriate buffer chaining
-          current_buffer = previous_buffer
-          new_titles << [current_buffer,prop[0]].join('.')
+          new_titles << [@current_buffer,prop[0]].join('.')
         end
       end
     end
+    @current_buffer.pop
     return new_titles
   end
 
