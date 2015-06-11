@@ -19,7 +19,8 @@ module REST
         puts base_uri
         @response = RestClient.get(base_uri,params)
       rescue => e
-        puts @response.code
+        puts e.message
+        puts "hadouken"
       end
       return @response
     end
@@ -40,7 +41,6 @@ module REST
       params = REST.get_params(access_token)
       begin
         @response = RestClient.patch(base_uri,json_payload,params)
-        puts "PATCH RESPONSE = #{@response}"
       rescue => e
         puts @response.code
       end

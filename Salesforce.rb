@@ -154,6 +154,7 @@ module Salesforce
       " OR npe01__AlternateEmail__c = '#{contact_email}')")
     campaign_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{campaign_search_string}"
     campaign_query_response = REST.get(campaign_base_uri,access_token)
+    puts campaign_query_response
     json_campaign = JSON.parse(campaign_query_response)
     contact_base_uri = "#{instance_url}/services/data/v29.0/query/?q=#{contact_search_string}"
     contact_query_response = REST.get(contact_base_uri,access_token)
