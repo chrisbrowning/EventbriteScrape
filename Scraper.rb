@@ -123,9 +123,9 @@ class Scraper
       events = json_file["events"]
       #pull the pages most and least recent event dates
       least_recent= Date.parse events[0]["start"]["local"]
-      most_recent = Date.parse events[-1]["start"]["local"]
+      most_recent = Date.parse events.last["start"]["local"]
       #nil-handling for no stop-date
-      stop = most_recent + 1 if stop.nil?
+      stop = most_recent + 99 if date[1].nil?
       if start <= most_recent
         events.each do |event|
           current = Date.parse event["start"]["local"]
